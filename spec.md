@@ -1,0 +1,2 @@
+I am building an email service, where i need to know the real-time status of the message, like delivered, read/opened. etc, like it is in Whatsapp.
+Stack i prefer: MERN, Typescript. I need to know if the other person opened the email.

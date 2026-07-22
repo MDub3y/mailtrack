@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:7
+    container_name: emailservice_mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: emailservice_redis
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
