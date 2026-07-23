@@ -18,7 +18,14 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
       name: string; domain: string; sendgridApiKey: string; fromEmail: string;
     };
 
-    if (!name || !domain || !sendgridApiKey || !fromEmail) {
+    // req.body is parsed JSON — a TS type assertion doesn't validate it at
+    // runtime. Without this, a client could submit an operator object
+    // instead of a string for any of these fields (NoSQL injection).
+    if (
+      typeof name !== 'string' || typeof domain !== 'string' ||
+      typeof sendgridApiKey !== 'string' || typeof fromEmail !== 'string' ||
+      !name || !domain || !sendgridApiKey || !fromEmail
+    ) {
       res.status(400).json({ message: 'name, domain, sendgridApiKey, and fromEmail are required' });
       return;
     }
@@ -73,7 +80,15 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 router.post('/join', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { organizationId } = req.body as { organizationId: string };
-    if (!organizationId) { res.status(400).json({ message: 'organizationId is required' }); return; }
+    // findById is sugar for findOne({ _id: organizationId }) — if
+    // organizationId arrived as an operator object (e.g. { "$ne": null })
+    // instead of a string, Mongoose can pass it straight through as a query
+    // condition rather than casting it, matching an arbitrary organization.
+    // Validating it's a real ObjectId string closes that off.
+    if (typeof organizationId !== 'string' || !mongoose.Types.ObjectId.isValid(organizationId)) {
+      res.status(400).json({ message: 'A valid organizationId is required' });
+      return;
+    }
 
     const org = await Organization.findById(organizationId);
     if (!org) { res.status(404).json({ message: 'Organization not found' }); return; }

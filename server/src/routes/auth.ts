@@ -30,7 +30,15 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
       emailAddress: string;
     };
 
-    if (!name || !email || !password || !emailAddress) {
+    // req.body is parsed JSON — a TS type assertion doesn't validate it at
+    // runtime. Without this check, a client could submit e.g.
+    // { "email": { "$ne": null } } and turn a MongoDB filter field into a
+    // query operator instead of an exact match (NoSQL injection).
+    if (
+      typeof name !== 'string' || typeof email !== 'string' ||
+      typeof password !== 'string' || typeof emailAddress !== 'string' ||
+      !name || !email || !password || !emailAddress
+    ) {
       res.status(400).json({ message: 'All fields are required' });
       return;
     }
@@ -64,7 +72,10 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
   try {
     const { email, password } = req.body as { email: string; password: string };
 
-    if (!email || !password) {
+    // Same NoSQL-injection concern as register — validate types explicitly
+    // rather than relying on `.toLowerCase()` incidentally throwing on a
+    // non-string.
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       res.status(400).json({ message: 'Email and password are required' });
       return;
     }

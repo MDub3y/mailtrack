@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 
 import authRoutes     from './routes/auth';
 import emailRoutes    from './routes/emails';
@@ -9,6 +10,14 @@ import trackRoutes    from './routes/track';
 import organizationRoutes from './routes/organizations';
 
 const app = express();
+
+app.use(helmet({
+  // The tracking pixel and shared PDFs are meant to be loaded cross-origin
+  // (an <img> tag inside a recipient's mail client, or the Gmail image
+  // proxy) — helmet's default same-origin resource policy would block
+  // exactly that.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
