@@ -24,9 +24,10 @@ const SharePanel = ({ doc, onClose }: SharePanelProps) => {
   const [createError, setCreateError] = useState('');
 
   useEffect(() => {
-    documentsApi.listShares(doc._id)
-      .then(res => setShares(res.data))
-      .catch(() => {})
+    documentsApi
+      .listShares(doc._id)
+      .then((res) => setShares(res.data))
+      .catch(() => { })
       .finally(() => setLoadingShares(false));
   }, [doc._id]);
 
@@ -40,12 +41,13 @@ const SharePanel = ({ doc, onClose }: SharePanelProps) => {
         expiresInHours,
       });
       setNewLink(res.data.shareUrl);
-      // Refresh list
       const listRes = await documentsApi.listShares(doc._id);
       setShares(listRes.data);
       setPassword('');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to create link.';
+      const msg =
+        (err as { response?: { data?: { message?: string; }; }; })?.response?.data?.message ||
+        'Failed to create link.';
       setCreateError(msg);
     } finally {
       setCreating(false);
@@ -55,8 +57,10 @@ const SharePanel = ({ doc, onClose }: SharePanelProps) => {
   const handleRevoke = async (tokenId: string) => {
     try {
       await documentsApi.revokeShare(doc._id, tokenId);
-      setShares(prev => prev.filter(s => s._id !== tokenId));
-    } catch { /* ignore */ }
+      setShares((prev) => prev.filter((s) => s._id !== tokenId));
+    } catch {
+      /* ignore */
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -67,72 +71,93 @@ const SharePanel = ({ doc, onClose }: SharePanelProps) => {
   };
 
   return (
-    <div style={sp.panel}>
-      <div style={sp.panelHeader}>
-        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>Share: {doc.originalName}</span>
-        <button onClick={onClose} style={sp.closeBtn}>✕</button>
+    <div className="mt-3 ml-12 p-5 bg-[#f8fafc] border border-[#eaedf1] rounded-xl text-left space-y-4">
+      <div className="flex items-center justify-between pb-3 border-b border-[#eaedf1]">
+        <span className="text-xs font-semibold text-[#0f172a]">Share Link: {doc.originalName}</span>
+        <button onClick={onClose} className="text-xs text-[#94a3b8] hover:text-[#0f172a] cursor-pointer">
+          ✕
+        </button>
       </div>
 
-      {/* Create new link */}
-      <div style={sp.section}>
-        <div style={sp.sectionTitle}>Create Share Link</div>
-        <div style={sp.row}>
+      <div className="space-y-3">
+        <span className="text-[10px] font-mono font-bold uppercase text-[#94a3b8] tracking-wider block">
+          Create New Share Link
+        </span>
+        <div className="flex gap-2">
           <input
             type="password"
             placeholder="Password (optional)"
             value={password}
-            onChange={e => setPassword(e.target.value)}
-            style={sp.input}
+            onChange={(e) => setPassword(e.target.value)}
+            className="flex-1 px-3 py-1.5 rounded-lg border border-[#eaedf1] bg-[#ffffff] text-xs text-[#0f172a] outline-none"
           />
           <select
             value={expiresInHours ?? ''}
-            onChange={e => setExpiresInHours(e.target.value ? Number(e.target.value) : undefined)}
-            style={sp.select}
+            onChange={(e) => setExpiresInHours(e.target.value ? Number(e.target.value) : undefined)}
+            className="px-3 py-1.5 rounded-lg border border-[#eaedf1] bg-[#ffffff] text-xs text-[#0f172a] outline-none cursor-pointer"
           >
-            <option value="">No expiry</option>
+            <option value="">No expiration</option>
             <option value="24">24 hours</option>
             <option value="168">7 days</option>
             <option value="720">30 days</option>
           </select>
         </div>
-        {createError && <div style={sp.error}>{createError}</div>}
-        <button onClick={handleCreate} disabled={creating} style={sp.createBtn}>
-          {creating ? 'Creating…' : '+ Create Link'}
+
+        {createError && <div className="text-xs text-red-500 font-medium">{createError}</div>}
+
+        <button
+          onClick={handleCreate}
+          disabled={creating}
+          className="px-3.5 py-1.5 rounded-lg bg-[#171717] hover:bg-[#000000] text-white text-xs font-medium cursor-pointer"
+        >
+          {creating ? 'Creating…' : '+ Generate Link'}
         </button>
 
         {newLink && (
-          <div style={sp.newLink}>
-            <span style={{ flex: 1, fontSize: '0.78rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{newLink}</span>
-            <button onClick={() => copyToClipboard(newLink)} style={sp.copyBtn}>
+          <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="flex-1 text-xs text-blue-900 truncate font-mono">{newLink}</span>
+            <button
+              onClick={() => copyToClipboard(newLink)}
+              className="px-2.5 py-1 rounded bg-[#ffffff] border border-blue-200 text-xs font-medium text-blue-700 hover:bg-blue-100 cursor-pointer"
+            >
               {copied ? '✓ Copied' : 'Copy'}
             </button>
           </div>
         )}
       </div>
 
-      {/* Existing shares */}
-      <div style={sp.section}>
-        <div style={sp.sectionTitle}>Active Links</div>
+      <div className="pt-3 border-t border-[#eaedf1] space-y-3">
+        <span className="text-[10px] font-mono font-bold uppercase text-[#94a3b8] tracking-wider block">
+          Active Links
+        </span>
         {loadingShares ? (
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>Loading…</div>
+          <div className="text-xs text-[#94a3b8]">Loading links…</div>
         ) : shares.length === 0 ? (
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>No active share links</div>
+          <div className="text-xs text-[#94a3b8]">No active share links created yet.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {shares.map(s => (
-              <div key={s._id} style={sp.shareRow}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.75rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.shareUrl}
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
+          <div className="space-y-2">
+            {shares.map((s) => (
+              <div key={s._id} className="flex items-center gap-2 p-2.5 bg-[#ffffff] border border-[#eaedf1] rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-mono text-[#0f172a] truncate">{s.shareUrl}</div>
+                  <div className="text-[11px] text-[#94a3b8] mt-0.5">
                     {s.accessCount} views
-                    {s.requiresPassword && ' · 🔒 password'}
-                    {s.expiresAt && ` · expires ${new Date(s.expiresAt).toLocaleDateString()}`}
+                    {s.requiresPassword && ' · Password protected'}
+                    {s.expiresAt && ` · Expires ${new Date(s.expiresAt).toLocaleDateString()}`}
                   </div>
                 </div>
-                <button onClick={() => copyToClipboard(s.shareUrl)} style={sp.copyBtn}>Copy</button>
-                <button onClick={() => handleRevoke(s._id)} style={sp.revokeBtn}>Revoke</button>
+                <button
+                  onClick={() => copyToClipboard(s.shareUrl)}
+                  className="px-2.5 py-1 rounded border border-[#eaedf1] bg-[#f8fafc] text-xs font-medium text-[#0f172a] hover:bg-[#f1f5f9] cursor-pointer"
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={() => handleRevoke(s._id)}
+                  className="px-2.5 py-1 rounded border border-red-200 bg-red-50 text-xs font-medium text-red-600 hover:bg-red-100 cursor-pointer"
+                >
+                  Revoke
+                </button>
               </div>
             ))}
           </div>
@@ -152,13 +177,16 @@ export const Documents = () => {
 
   const fetchDocs = () => {
     setLoading(true);
-    documentsApi.list()
-      .then(res => setDocs(res.data))
-      .catch(() => {})
+    documentsApi
+      .list()
+      .then((res) => setDocs(res.data))
+      .catch(() => { })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchDocs(); }, []);
+  useEffect(() => {
+    fetchDocs();
+  }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -172,7 +200,9 @@ export const Documents = () => {
       await documentsApi.upload(formData);
       fetchDocs();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Upload failed.';
+      const msg =
+        (err as { response?: { data?: { message?: string; }; }; })?.response?.data?.message ||
+        'Upload failed.';
       setUploadError(msg);
     } finally {
       setUploading(false);
@@ -180,77 +210,101 @@ export const Documents = () => {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Delete "${name}"? This will also revoke all share links.`)) return;
+    if (!window.confirm(`Delete "${name}"? This will also revoke all active share links.`)) return;
     try {
       await documentsApi.delete(id);
-      setDocs(prev => prev.filter(d => d._id !== id));
+      setDocs((prev) => prev.filter((d) => d._id !== id));
       if (openShareId === id) setOpenShareId(null);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
-    <div style={s.page}>
-      <div style={s.topBar}>
+    <div className="flex-1 flex flex-col bg-[#ffffff]">
+      <div className="px-8 py-5 border-b border-[#eaedf1] flex items-center justify-between bg-[#ffffff]">
         <div>
-          <div style={s.pageTitle}>Documents</div>
-          <div style={s.pageSubtitle}>Upload PDFs and create secure share links</div>
+          <h1 className="text-lg font-semibold text-[#0f172a] tracking-tight">Documents</h1>
+          <p className="text-xs text-[#64748b] mt-0.5">Upload PDFs and configure protected share links</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {uploadError && <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>{uploadError}</span>}
-          <input type="file" accept=".pdf" style={{ display: 'none' }} ref={fileInputRef} onChange={handleUpload} />
+        <div className="flex items-center gap-3">
+          {uploadError && <span className="text-xs text-red-500 font-medium">{uploadError}</span>}
+          <input
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleUpload}
+          />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            style={s.uploadBtn}
+            className="px-4 py-2 rounded-xl bg-[#171717] hover:bg-[#000000] text-white text-xs font-semibold transition active:scale-[0.98] flex items-center gap-2 cursor-pointer shadow-sm"
           >
-            {uploading ? 'Uploading…' : '⬆ Upload PDF'}
+            <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            {uploading ? 'Uploading…' : 'Upload PDF'}
           </button>
         </div>
       </div>
 
-      <div style={s.content}>
+      <div className="flex-1 p-8 overflow-y-auto">
         {loading ? (
-          <div style={s.empty}>Loading…</div>
+          <div className="text-center py-20 text-xs font-mono text-[#94a3b8]">Loading documents…</div>
         ) : docs.length === 0 ? (
-          <div style={s.empty}>
-            <div style={{ fontSize: '3rem', marginBottom: 12 }}>📄</div>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>No documents yet</div>
-            <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Upload a PDF to get started</div>
+          <div className="h-80 flex flex-col items-center justify-center text-center p-8">
+            <div className="size-12 rounded-2xl border border-[#eaedf1] bg-[#f8fafc] flex items-center justify-center text-[#94a3b8] mb-3">
+              <svg className="size-6" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="text-sm font-semibold text-[#0f172a]">No documents uploaded</div>
+            <div className="text-xs text-[#64748b] mt-1 max-w-xs">
+              Upload a PDF document to start generating password-protected view links.
+            </div>
           </div>
         ) : (
-          <div style={s.list}>
-            {docs.map(doc => (
-              <div key={doc._id}>
-                <div style={s.docRow}>
-                  <div style={s.docIcon}>📄</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={s.docName}>{doc.originalName}</div>
-                    <div style={s.docMeta}>
-                      {formatBytes(doc.size)}
-                      <span style={s.metaDot}>·</span>
-                      {doc.viewCount} view{doc.viewCount !== 1 ? 's' : ''}
-                      <span style={s.metaDot}>·</span>
-                      {new Date(doc.createdAt).toLocaleDateString()}
+          <div className="divide-y divide-[#eaedf1]">
+            {docs.map((doc) => (
+              <div key={doc._id} className="py-4">
+                <div className="flex items-center gap-4">
+                  <div className="size-9 rounded-xl border border-[#eaedf1] bg-[#f8fafc] text-[#0f172a] flex items-center justify-center shrink-0">
+                    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-sm font-semibold text-[#0f172a] truncate">{doc.originalName}</div>
+                    <div className="text-xs text-[#94a3b8] flex items-center gap-2 mt-0.5 font-mono">
+                      <span>{formatBytes(doc.size)}</span>
+                      <span>·</span>
+                      <span>{doc.viewCount} view{doc.viewCount !== 1 ? 's' : ''}</span>
+                      <span>·</span>
+                      <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => setOpenShareId(openShareId === doc._id ? null : doc._id)}
-                      style={{ ...s.actionBtn, ...(openShareId === doc._id ? s.actionBtnActive : {}) }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition ${openShareId === doc._id
+                          ? 'bg-blue-50 border-blue-200 text-blue-700'
+                          : 'bg-[#ffffff] border-[#eaedf1] text-[#0f172a] hover:bg-[#f8fafc]'
+                        }`}
                     >
-                      🔗 Share
+                      Share Link
                     </button>
                     <button
                       onClick={() => handleDelete(doc._id, doc.originalName)}
-                      style={s.deleteBtn}
+                      className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
                     >
-                      🗑
+                      <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                     </button>
                   </div>
                 </div>
-                {openShareId === doc._id && (
-                  <SharePanel doc={doc} onClose={() => setOpenShareId(null)} />
-                )}
+                {openShareId === doc._id && <SharePanel doc={doc} onClose={() => setOpenShareId(null)} />}
               </div>
             ))}
           </div>
@@ -258,91 +312,4 @@ export const Documents = () => {
       </div>
     </div>
   );
-};
-
-const s: Record<string, React.CSSProperties> = {
-  page: { display: 'flex', flexDirection: 'column', height: '100%' },
-  topBar: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '20px 28px', borderBottom: '1px solid #f1f5f9', flexShrink: 0,
-  },
-  pageTitle: { fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' },
-  pageSubtitle: { fontSize: '0.8rem', color: '#94a3b8', marginTop: 2 },
-  uploadBtn: {
-    padding: '9px 18px', borderRadius: 8, border: 'none',
-    background: '#2563eb', color: '#fff', fontWeight: 600,
-    fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit',
-  },
-  content: { flex: 1, overflowY: 'auto', padding: '20px 28px' },
-  empty: { textAlign: 'center', padding: '80px 20px', color: '#94a3b8' },
-  list: { display: 'flex', flexDirection: 'column', gap: 0 },
-  docRow: {
-    display: 'flex', alignItems: 'center', gap: 14,
-    padding: '14px 0', borderBottom: '1px solid #f1f5f9',
-  },
-  docIcon: { fontSize: '1.5rem', flexShrink: 0, width: 32, textAlign: 'center' },
-  docName: { fontSize: '0.9rem', fontWeight: 600, color: '#0f172a', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  docMeta: { fontSize: '0.75rem', color: '#94a3b8', display: 'flex', gap: 4, alignItems: 'center' },
-  metaDot: { opacity: 0.5 },
-  actionBtn: {
-    padding: '6px 14px', borderRadius: 6, border: '1px solid #e2e8f0',
-    background: '#fff', color: '#374151', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit',
-  },
-  actionBtnActive: { background: '#eff6ff', borderColor: '#bfdbfe', color: '#2563eb' },
-  deleteBtn: {
-    padding: '6px 10px', borderRadius: 6, border: '1px solid #fecaca',
-    background: '#fff5f5', color: '#dc2626', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit',
-  },
-};
-
-const sp: Record<string, React.CSSProperties> = {
-  panel: {
-    margin: '0 0 8px 46px', background: '#f8fafc',
-    border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden',
-  },
-  panelHeader: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '10px 16px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0',
-  },
-  closeBtn: { background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.9rem', cursor: 'pointer' },
-  section: { padding: '14px 16px', borderBottom: '1px solid #e2e8f0' },
-  sectionTitle: {
-    fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8',
-    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10,
-  },
-  row: { display: 'flex', gap: 8, marginBottom: 10 },
-  input: {
-    flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
-    fontSize: '0.83rem', outline: 'none', fontFamily: 'inherit',
-  },
-  select: {
-    padding: '7px 10px', borderRadius: 6, border: '1px solid #e2e8f0',
-    fontSize: '0.83rem', background: '#fff', fontFamily: 'inherit', cursor: 'pointer',
-  },
-  error: { fontSize: '0.78rem', color: '#dc2626', marginBottom: 8, padding: '6px 10px', background: '#fef2f2', borderRadius: 6 },
-  createBtn: {
-    padding: '7px 16px', borderRadius: 6, border: 'none',
-    background: '#2563eb', color: '#fff', fontWeight: 600,
-    fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-  },
-  newLink: {
-    display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
-    padding: '8px 10px', background: '#eff6ff', border: '1px solid #bfdbfe',
-    borderRadius: 6,
-  },
-  copyBtn: {
-    padding: '4px 10px', borderRadius: 5, border: '1px solid #e2e8f0',
-    background: '#fff', fontSize: '0.75rem', cursor: 'pointer',
-    fontFamily: 'inherit', flexShrink: 0, color: '#374151',
-  },
-  shareRow: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    padding: '8px 10px', background: '#fff', border: '1px solid #e2e8f0',
-    borderRadius: 6,
-  },
-  revokeBtn: {
-    padding: '4px 10px', borderRadius: 5, border: '1px solid #fecaca',
-    background: '#fff5f5', color: '#dc2626', fontSize: '0.75rem',
-    cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-  },
 };

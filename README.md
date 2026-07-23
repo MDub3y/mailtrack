@@ -247,3 +247,31 @@ Register two accounts. Open the app in two browser windows (use incognito for th
 - The recipient-open endpoint verifies `recipientId === req.userId` — senders cannot self-mark
 - User search regex input is escaped before use in MongoDB `$regex` to prevent ReDoS
 - Multer rejects non-PDF MIME types and enforces a 20 MB file size limit
+
+## Users
+All platform users (9 total):                                                                                                                             
+  ┌─────────────┬──────────────────────┬─────────────────────┬─────────────┐    │    Name     │        Login         │  Platform Address   │  Password   │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤
+  │ Test User   │ test@test.com        │ test@yourdomain.com │ password123 │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Bob         │ bob@test.com         │ bob@mailtrack.local │ password123 │  
+  │ Recipient   │                      │                     │             │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Alice Chen  │ alice@mailtrack.dev  │ alice@mailtrack.io  │ password123 │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Marcus Webb │ marcus@mailtrack.dev │ marcus@mailtrack.io │ password123 │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Priya       │ priya@mailtrack.dev  │ priya@mailtrack.io  │ password123 │  
+  │ Sharma      │                      │                     │             │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ James       │ james@mailtrack.dev  │ james@mailtrack.io  │ password123 │  
+  │ Okafor      │                      │                     │             │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Sofia Reyes │ sofia@mailtrack.dev  │ sofia@mailtrack.io  │ password123 │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Liam        │ liam@mailtrack.dev   │ liam@mailtrack.io   │ password123 │  
+  │ Nakamura    │                      │                     │             │  
+  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
+  │ Anya        │ anya@mailtrack.dev   │ anya@mailtrack.io   │ password123 │  
+  │ Petrova     │                      │                     │             │  
+  └─────────────┴──────────────────────┴─────────────────────┴─────────────┘  

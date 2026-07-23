@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { emailsApi, documentsApi } from '../api';
 import type { Email, PlatformUser, DocumentAttachment } from '../types';
@@ -15,7 +15,14 @@ interface Props {
 }
 
 export const EmailCompose = ({ onSent, onClose }: Props) => {
-  const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting }, reset } = useForm<FormData>();
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<FormData>();
   const [suggestions, setSuggestions] = useState<PlatformUser[]>([]);
   const [sendError, setSendError] = useState('');
   const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
@@ -24,16 +31,20 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Search platform users as the user types in the To field
   useEffect(() => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (toValue.length < 2) { setSuggestions([]); return; }
+    if (toValue.length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
     searchTimeout.current = setTimeout(async () => {
       try {
         const res = await emailsApi.searchUsers(toValue);
         setSuggestions(res.data);
-      } catch { setSuggestions([]); }
+      } catch {
+        setSuggestions([]);
+      }
     }, 300);
   }, [toValue]);
 
@@ -45,7 +56,6 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset so the same file can be re-selected
     e.target.value = '';
     setUploading(true);
     setSendError('');
@@ -54,16 +64,19 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
       formData.append('file', file);
       const uploadRes = await documentsApi.upload(formData);
       const doc = uploadRes.data;
-      // Auto-create share with no password and no expiry
       const shareRes = await documentsApi.createShare(doc._id, {});
-      setAttachments(prev => [...prev, {
-        documentId: doc._id,
-        name: doc.originalName,
-        shareUrl: shareRes.data.shareUrl,
-      }]);
+      setAttachments((prev) => [
+        ...prev,
+        {
+          documentId: doc._id,
+          name: doc.originalName,
+          shareUrl: shareRes.data.shareUrl,
+        },
+      ]);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Failed to attach file.';
+      const msg =
+        (err as { response?: { data?: { message?: string; }; }; })?.response?.data?.message ??
+        'Failed to attach file.';
       setSendError(msg);
     } finally {
       setUploading(false);
@@ -71,7 +84,7 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
   };
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (data: FormData) => {
@@ -89,127 +102,141 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
       setAttachments([]);
       onClose();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Failed to send email.';
+      const msg =
+        (err as { response?: { data?: { message?: string; }; }; })?.response?.data?.message ??
+        'Failed to send email.';
       setSendError(msg);
     }
   };
 
   return (
-    <div style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div style={s.modal}>
-        <div style={s.header}>
-          <span style={s.headerTitle}>New Message</span>
-          <button style={s.iconBtn} onClick={onClose}>✕</button>
+    <div
+      className="fixed inset-0 z-50 bg-[#0f172a]/20 backdrop-blur-xs flex items-end justify-end p-6"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="w-full max-w-lg bg-[#ffffff] border border-[#eaedf1] rounded-2xl shadow-2xl overflow-hidden flex flex-col text-left">
+        <div className="px-5 py-3.5 border-b border-[#eaedf1] bg-[#f8fafc] flex items-center justify-between">
+          <span className="text-xs font-semibold text-[#0f172a]">New Tracked Message</span>
+          <button onClick={onClose} className="text-xs text-[#94a3b8] hover:text-[#0f172a] cursor-pointer">
+            ✕
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          {/* To field with autocomplete */}
-          <div style={s.fieldRow}>
-            <label style={s.fieldLabel}>To</label>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <input
-                style={{ ...s.fieldInput, ...(errors.to ? { borderBottom: '2px solid #ef4444' } : {}) }}
-                type="text"
-                placeholder="name@platform or start typing…"
-                autoComplete="off"
-                {...register('to', { required: true })}
-              />
-              {suggestions.length > 0 && (
-                <div style={s.dropdown}>
-                  {suggestions.map((u) => (
-                    <div key={u._id} style={s.dropdownItem} onClick={() => pickSuggestion(u)}>
-                      <div style={s.suggestionAvatar}>{u.name.charAt(0).toUpperCase()}</div>
-                      <div>
-                        <div style={s.suggestionName}>{u.name}</div>
-                        <div style={s.suggestionEmail}>{u.emailAddress}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={s.divider} />
-
-          <div style={s.fieldRow}>
-            <label style={s.fieldLabel}>Subject</label>
+        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-3">
+          <div className="relative">
+            <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-wider block mb-1">
+              To
+            </label>
             <input
-              style={{ ...s.fieldInput, ...(errors.subject ? { borderBottom: '2px solid #ef4444' } : {}) }}
-              type="text" placeholder="Subject"
+              type="text"
+              placeholder="recipient@domain.com"
+              autoComplete="off"
+              {...register('to', { required: true })}
+              className="w-full px-3 py-2 rounded-lg border border-[#eaedf1] text-xs text-[#0f172a] outline-none focus:border-[#0f172a]"
+            />
+            {suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-[#ffffff] border border-[#eaedf1] rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                {suggestions.map((u) => (
+                  <div
+                    key={u._id}
+                    onClick={() => pickSuggestion(u)}
+                    className="p-2.5 hover:bg-[#f8fafc] cursor-pointer flex items-center gap-3 border-b border-[#eaedf1] last:border-b-0"
+                  >
+                    <div className="size-7 rounded-full bg-[#f1f5f9] text-[#0f172a] text-xs font-bold flex items-center justify-center">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-[#0f172a]">{u.name}</div>
+                      <div className="text-[11px] text-[#64748b]">{u.emailAddress}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold text-[#64748b] uppercase tracking-wider block mb-1">
+              Subject
+            </label>
+            <input
+              type="text"
+              placeholder="Subject line"
               {...register('subject', { required: true })}
+              className="w-full px-3 py-2 rounded-lg border border-[#eaedf1] text-xs text-[#0f172a] outline-none focus:border-[#0f172a]"
             />
           </div>
-          <div style={s.divider} />
 
-          <textarea style={s.body} placeholder="Write your message…" {...register('body', { required: true })} />
+          <div>
+            <textarea
+              placeholder="Write your email content…"
+              {...register('body', { required: true })}
+              className="w-full h-40 p-3 rounded-lg border border-[#eaedf1] text-xs text-[#0f172a] outline-none focus:border-[#0f172a] resize-none leading-relaxed"
+            />
+          </div>
 
-          {/* Attachment chips */}
           {attachments.length > 0 && (
-            <div style={s.attachmentList}>
+            <div className="flex flex-wrap gap-2 pt-1">
               {attachments.map((a, i) => (
-                <div key={i} style={s.chip}>
-                  <span style={{ fontSize: '0.75rem' }}>📄</span>
-                  <span style={{ fontSize: '0.8rem', color: '#1e293b', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                  <button type="button" onClick={() => removeAttachment(i)} style={s.chipRemove}>✕</button>
-                </div>
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs text-blue-800"
+                >
+                  <span className="truncate max-w-[150px]">{a.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="text-xs text-blue-500 hover:text-blue-900 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </span>
               ))}
             </div>
           )}
 
-          {sendError && <div style={s.errorBanner}>{sendError}</div>}
+          {sendError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-600">
+              {sendError}
+            </div>
+          )}
 
-          {/* Hidden file input */}
           <input
             type="file"
             accept=".pdf"
-            style={{ display: 'none' }}
+            className="hidden"
             ref={fileInputRef}
             onChange={handleFileChange}
           />
 
-          <div style={s.footer}>
-            <button type="submit" disabled={isSubmitting || uploading} style={s.sendBtn}>
-              {isSubmitting ? 'Sending…' : '✈ Send'}
-            </button>
+          <div className="flex items-center justify-between pt-2 border-t border-[#eaedf1]">
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={isSubmitting || uploading}
+                className="px-4 py-2 rounded-xl bg-[#171717] hover:bg-[#000000] text-white text-xs font-semibold cursor-pointer"
+              >
+                {isSubmitting ? 'Sending…' : 'Send Email'}
+              </button>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-2 rounded-xl border border-[#eaedf1] bg-[#ffffff] hover:bg-[#f8fafc] text-xs font-medium text-[#0f172a] cursor-pointer"
+              >
+                {uploading ? 'Uploading…' : 'Attach PDF'}
+              </button>
+            </div>
             <button
               type="button"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-              style={s.attachBtn}
+              onClick={onClose}
+              className="text-xs text-[#94a3b8] hover:text-[#0f172a] cursor-pointer"
             >
-              {uploading ? 'Uploading…' : '📎 Attach PDF'}
+              Discard
             </button>
-            <button type="button" onClick={onClose} style={s.discardBtn}>Discard</button>
           </div>
         </form>
       </div>
     </div>
   );
-};
-
-const s: Record<string, React.CSSProperties> = {
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 24, zIndex: 500 },
-  modal: { background: '#fff', borderRadius: 12, width: 520, boxShadow: '0 24px 80px rgba(0,0,0,0.25)', overflow: 'visible', display: 'flex', flexDirection: 'column' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#1e293b', borderRadius: '12px 12px 0 0' },
-  headerTitle: { color: '#f1f5f9', fontWeight: 600, fontSize: '0.9rem' },
-  iconBtn: { background: 'none', border: 'none', color: '#94a3b8', fontSize: '1rem', padding: 4, lineHeight: 1, cursor: 'pointer' },
-  fieldRow: { display: 'flex', alignItems: 'flex-start', padding: '0 16px', minHeight: 46 },
-  fieldLabel: { width: 56, fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500, flexShrink: 0, paddingTop: 14 },
-  fieldInput: { flex: 1, border: 'none', outline: 'none', fontSize: '0.9rem', padding: '12px 0', color: '#0f172a', background: 'transparent', width: '100%' },
-  divider: { height: 1, background: '#f1f5f9', margin: '0 16px' },
-  body: { width: '100%', minHeight: 200, border: 'none', outline: 'none', resize: 'vertical', padding: '14px 16px', fontSize: '0.92rem', lineHeight: 1.6, color: '#0f172a', fontFamily: 'inherit', boxSizing: 'border-box' },
-  attachmentList: { display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 0' },
-  chip: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 20 },
-  chipRemove: { background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.7rem', padding: '0 0 0 2px', cursor: 'pointer', lineHeight: 1 },
-  footer: { display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderTop: '1px solid #f1f5f9' },
-  sendBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '9px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' },
-  attachBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: '0.85rem', cursor: 'pointer' },
-  discardBtn: { marginLeft: 'auto', padding: '9px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#94a3b8', fontSize: '0.85rem', cursor: 'pointer' },
-  errorBanner: { margin: '0 16px 8px', padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: '0.83rem' },
-  dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden' },
-  dropdownItem: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer' },
-  suggestionAvatar: { width: 32, height: 32, borderRadius: '50%', background: '#dbeafe', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 },
-  suggestionName: { fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' },
-  suggestionEmail: { fontSize: '0.75rem', color: '#94a3b8' },
 };

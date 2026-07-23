@@ -30,14 +30,13 @@ export const Sent = () => {
       const res = await emailsApi.getSent();
       const fresh = res.data;
 
-      // Detect status upgrades and show toast
       fresh.forEach((email) => {
         const prev = prevStatusRef.current[email._id];
         if (prev && STATUS_RANK[email.status] > STATUS_RANK[prev]) {
           const labels: Record<EmailStatus, string> = {
             sent: 'Sent', delivered: 'Delivered', opened: 'Opened',
           };
-          addToast(`✓ "${email.subject}" — ${labels[email.status]}`, 'success');
+          addToast(`"${email.subject}" — ${labels[email.status]}`, 'success');
         }
         prevStatusRef.current[email._id] = email.status;
       });
@@ -48,18 +47,13 @@ export const Sent = () => {
     }
   }, [addToast]);
 
-  // Initial load
   useEffect(() => { fetchEmails(); }, [fetchEmails]);
 
-  // Auto-poll every 4 seconds for status updates
   useEffect(() => {
     const id = setInterval(() => fetchEmails(true), 4000);
     return () => clearInterval(id);
   }, [fetchEmails]);
 
-  // Immediately re-fetch when the user switches back to this tab.
-  // Chrome throttles setInterval to ~60s in background tabs, so without this
-  // the status would appear stale after opening the preview in another tab.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') fetchEmails(true);
@@ -71,7 +65,7 @@ export const Sent = () => {
   const handleSent = (email: Email) => {
     prevStatusRef.current[email._id] = email.status;
     setEmails((prev) => [email, ...prev]);
-    addToast(`📤 "${email.subject}" sent`, 'info');
+    addToast(`"${email.subject}" sent`, 'info');
   };
 
   const handleSelect = async (email: Email) => {
@@ -79,43 +73,50 @@ export const Sent = () => {
     setSelected(res.data);
   };
 
-  // When recipient opens the email, update the badge immediately in the list
   const handleOpened = (emailId: string) => {
     setEmails((prev) => prev.map((e) =>
       e._id === emailId
         ? { ...e, status: 'opened', events: [...e.events, { type: 'opened', timestamp: new Date().toISOString() }] }
         : e
     ));
-    addToast('👁 Email was opened by the recipient', 'success');
+    addToast('Email was opened by recipient', 'success');
   };
 
   return (
-    <div style={s.page}>
-      {/* Toolbar */}
-      <div style={s.toolbar}>
+    <div className="flex-1 flex flex-col bg-[#ffffff]">
+      {/* Header Bar */}
+      <div className="px-8 py-5 border-b border-[#eaedf1] flex items-center justify-between bg-[#ffffff]">
         <div>
-          <div style={s.pageTitle}>Sent</div>
-          <div style={s.pageSubtitle}>
-            {emails.length} email{emails.length !== 1 ? 's' : ''} · auto-updating every 4s
-          </div>
+          <h1 className="text-lg font-semibold text-[#0f172a] tracking-tight">Sent Feeds</h1>
+          <p className="text-xs text-[#64748b] mt-0.5">
+            {emails.length} message{emails.length !== 1 ? 's' : ''} · auto-updating every 4s
+          </p>
         </div>
-        <button style={s.composeBtn} onClick={() => setComposing(true)}>
-          ✎ Compose
+        <button
+          onClick={() => setComposing(true)}
+          className="px-4 py-2 rounded-xl bg-[#171717] hover:bg-[#000000] text-white text-xs font-semibold transition active:scale-[0.98] flex items-center gap-2 cursor-pointer shadow-sm"
+        >
+          <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Compose Email
         </button>
       </div>
 
-      {/* List */}
-      {loading ? (
-        <SkeletonList />
-      ) : emails.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <div style={s.list}>
-          {emails.map((email) => (
-            <EmailRow key={email._id} email={email} onClick={() => handleSelect(email)} />
-          ))}
-        </div>
-      )}
+      {/* Main List */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <SkeletonList />
+        ) : emails.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="divide-y divide-[#eaedf1]">
+            {emails.map((email) => (
+              <EmailRow key={email._id} email={email} onClick={() => handleSelect(email)} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {composing && <EmailCompose onSent={handleSent} onClose={() => setComposing(false)} />}
       {selected && <EmailDetail email={selected} onClose={() => setSelected(null)} onOpened={handleOpened} />}
@@ -124,24 +125,23 @@ export const Sent = () => {
   );
 };
 
-const EmailRow = ({ email, onClick }: { email: Email; onClick: () => void }) => {
-  const [hovered, setHovered] = useState(false);
+const EmailRow = ({ email, onClick }: { email: Email; onClick: () => void; }) => {
   return (
     <div
-      style={{ ...s.row, background: hovered ? '#f8fafc' : '#fff' }}
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="flex items-center px-8 py-4 bg-[#ffffff] hover:bg-[#f8fafc] cursor-pointer transition-colors gap-4"
     >
-      <div style={s.avatar}>{email.to.charAt(0).toUpperCase()}</div>
-      <div style={s.rowBody}>
-        <div style={s.rowTop}>
-          <span style={s.rowTo}>{email.to}</span>
-          <span style={s.rowDate}>{formatDate(email.createdAt)}</span>
-        </div>
-        <div style={s.rowSubject}>{email.subject || '(no subject)'}</div>
+      <div className="size-9 rounded-full bg-[#f1f5f9] text-[#0f172a] font-semibold text-xs flex items-center justify-center shrink-0 border border-[#eaedf1]">
+        {email.to.charAt(0).toUpperCase()}
       </div>
-      <div style={{ marginLeft: 12, flexShrink: 0 }}>
+      <div className="flex-1 min-w-0 text-left">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-sm font-semibold text-[#0f172a] truncate">{email.to}</span>
+          <span className="text-[11px] text-[#94a3b8] font-mono shrink-0">{formatDate(email.createdAt)}</span>
+        </div>
+        <div className="text-xs text-[#64748b] truncate mt-0.5">{email.subject || '(no subject)'}</div>
+      </div>
+      <div className="shrink-0">
         <StatusBadge status={email.status} size="sm" />
       </div>
     </div>
@@ -149,13 +149,13 @@ const EmailRow = ({ email, onClick }: { email: Email; onClick: () => void }) => 
 };
 
 const SkeletonList = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+  <div className="divide-y divide-[#eaedf1]">
     {[1, 2, 3].map((i) => (
-      <div key={i} style={{ ...s.row, background: '#fff' }}>
-        <div style={{ ...s.avatar, background: '#f1f5f9' }} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ height: 12, width: '40%', background: '#f1f5f9', borderRadius: 4 }} />
-          <div style={{ height: 10, width: '60%', background: '#f1f5f9', borderRadius: 4 }} />
+      <div key={i} className="flex items-center px-8 py-4 gap-4 animate-pulse">
+        <div className="size-9 rounded-full bg-[#f1f5f9] shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 bg-[#f1f5f9] rounded w-1/3" />
+          <div className="h-2.5 bg-[#f1f5f9] rounded w-1/2" />
         </div>
       </div>
     ))}
@@ -163,10 +163,16 @@ const SkeletonList = () => (
 );
 
 const EmptyState = () => (
-  <div style={s.empty}>
-    <div style={s.emptyIcon}>✉</div>
-    <div style={s.emptyTitle}>No sent emails yet</div>
-    <div style={s.emptySub}>Click Compose to send your first tracked email</div>
+  <div className="h-96 flex flex-col items-center justify-center text-center p-8">
+    <div className="size-12 rounded-2xl border border-[#eaedf1] bg-[#f8fafc] flex items-center justify-center text-[#94a3b8] mb-3">
+      <svg className="size-6" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    </div>
+    <div className="text-sm font-semibold text-[#0f172a]">No sent emails yet</div>
+    <div className="text-xs text-[#64748b] mt-1 max-w-xs">
+      Compose your first tracked email to receive instant read receipts and timeline updates.
+    </div>
   </div>
 );
 
@@ -175,24 +181,4 @@ const formatDate = (iso: string) => {
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-};
-
-const s: Record<string, React.CSSProperties> = {
-  page: { flex: 1, display: 'flex', flexDirection: 'column' },
-  toolbar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9' },
-  pageTitle: { fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' },
-  pageSubtitle: { fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 },
-  composeBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: '0.85rem' },
-  list: { flex: 1, display: 'flex', flexDirection: 'column' },
-  row: { display: 'flex', alignItems: 'center', padding: '14px 24px', borderBottom: '1px solid #f8fafc', cursor: 'pointer', transition: 'background 0.1s', gap: 12 },
-  avatar: { width: 36, height: 36, borderRadius: '50%', background: '#dbeafe', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 },
-  rowBody: { flex: 1, minWidth: 0 },
-  rowTop: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-  rowTo: { fontSize: '0.85rem', fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  rowDate: { fontSize: '0.72rem', color: '#94a3b8', flexShrink: 0 },
-  rowSubject: { fontSize: '0.82rem', color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  empty: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, color: '#94a3b8' },
-  emptyIcon: { fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 },
-  emptyTitle: { fontSize: '1rem', fontWeight: 600, color: '#64748b', marginBottom: 6 },
-  emptySub: { fontSize: '0.85rem', textAlign: 'center' },
 };

@@ -1,20 +1,87 @@
-*, *::before, *::after { box-sizing: border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
-  color: #0f172a;
-  background: #f8fafc;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  :root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Pure Dark Theme Variables */
+    --color-brand: #F17463;
+    --color-brand-hover: #f38677;
+    --color-divide: #262626;
+    --color-line: #333333;
+    --color-dots: #262626;
+    --pattern-fg: rgba(255, 255, 255, 0.05);
+
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #000000;
+    color: #ffffff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgba(241, 116, 99, 0.3);
+    color: #ffffff;
+  }
 }
 
-#root { min-height: 100vh; display: flex; flex-direction: column; }
+/* Custom Utilities */
+.bg-divide {
+  background-color: var(--color-divide);
+}
 
-button { font-family: inherit; cursor: pointer; }
-input, textarea, select { font-family: inherit; }
-a { color: inherit; text-decoration: none; }
+.border-divide {
+  border-color: var(--color-divide);
+}
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.text-brand {
+  color: var(--color-brand);
+}
+
+.bg-brand {
+  background-color: var(--color-brand);
+}
+
+.text-charcoal-700 {
+  color: #f5f5f5;
+}
+
+.text-charcoal-900 {
+  color: #ffffff;
+}
+
+.bg-charcoal-900 {
+  background-color: #ffffff;
+}
+
+/* Shadow Aceternity Utility */
+.shadow-aceternity {
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 68px rgba(0, 0, 0, 0.9);
+}
+
+/* Orbit Animations */
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes counter-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+.animate-orbit {
+  animation: orbit var(--duration, 20s) linear infinite;
+}
+
+.animate-counter-orbit {
+  animation: counter-orbit var(--duration, 20s) linear infinite;
+}
