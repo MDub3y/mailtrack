@@ -4,6 +4,11 @@ Send a real email to anyone, and know when they open it.
 
 MailTrack dispatches actual email — through a user's own connected Gmail account, or through a company's own SendGrid account for enterprise customers — and tracks opens with an invisible pixel embedded in the message. The sender's dashboard updates within a few seconds of the recipient opening it, no refresh needed.
 
+https://github.com/user-attachments/assets/5fd8e10d-a6af-4c9a-b232-187eed54c941
+
+---
+
+<img width="851" height="585" alt="Screenshot 2026-07-23 234351" src="https://github.com/user-attachments/assets/26b522a6-9e74-4c68-a81e-dea61213e9ed" />
 ---
 
 ## Features
