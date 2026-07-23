@@ -71,7 +71,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 // GET /api/auth/me
 router.get('/me', protect, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const user = await User.findById(req.userId).select('-password');
+    const user = await User.findById(req.userId)
+      .select('-password')
+      .populate('organizationId', 'name domain fromEmail');
     if (!user) {
       res.status(404).json({ message: 'User not found' });
       return;

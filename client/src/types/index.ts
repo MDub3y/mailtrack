@@ -1,9 +1,17 @@
+export interface Organization {
+  _id: string;
+  name: string;
+  domain: string;
+  fromEmail: string;
+}
+
 export interface User {
   _id: string;
   name: string;
   email: string;
   emailAddress: string;
   gmailAddress?: string;
+  organizationId?: Organization;
 }
 
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';

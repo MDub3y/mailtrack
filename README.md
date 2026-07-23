@@ -1,85 +1,58 @@
 # MailTrack
 
-An internal email platform with delivery tracking, open receipts, PDF document sharing, and bulk sending. When a recipient opens an email, the sender's UI updates automatically — no refresh, no polling workaround, no external service.
+Send a real email to anyone, and know when they open it.
 
----
-
-## The Alpha
-
-Every email client (Gmail, Outlook) can tell you an email was *delivered* to a server. None of them tell the sender when the recipient actually *read* it — at least not natively, not in real time, and not without the recipient's email provider stripping the signal.
-
-MailTrack owns the full stack — sender, delivery, inbox, and the read event — so it closes that loop precisely:
-
-- **`sent`** — message written to the database
-- **`delivered`** — confirmed immediately (no SMTP hop, no bounce risk)
-- **`opened`** — fires the instant the recipient clicks the email in their inbox
-
-The status change on the sender's screen happens within 4 seconds of the recipient opening the message, with no action required from either party.
+MailTrack dispatches actual email — through a user's own connected Gmail account, or through a company's own SendGrid account for enterprise customers — and tracks opens with an invisible pixel embedded in the message. The sender's dashboard updates within a few seconds of the recipient opening it, no refresh needed.
 
 ---
 
 ## Features
 
-### Email Tracking
+### Send from your own Gmail account
 
-When the recipient opens an email in their inbox, the `EmailDetail` component mounts and immediately calls `PATCH /api/emails/:id/open`. The backend marks the email `opened` and appends an event with a timestamp. The sender's Sent page polls every 4 seconds and picks up the change. The status badge updates without any user interaction.
+Connect your Google account once (standard "Allow access" screen, same as any "Sign in with Google" button). From then on, emails you send through MailTrack are dispatched through the Gmail API using your own token — so they're genuinely from your address, land in your own Gmail Sent folder, and pass DKIM/SPF/DMARC properly. No SMTP setup, no app passwords.
 
-```
-Recipient opens email
-  → EmailDetail mounts
-  → PATCH /api/emails/:id/open  (only the authenticated recipient can call this)
-  → Email.status = "opened", event pushed
-  → Sender's 4s poll catches the change
-  → Badge: delivered → opened
-```
+### Open tracking
 
-The `PATCH` endpoint is guarded: it checks that `req.userId === email.recipientId`. A sender cannot mark their own email as opened.
+A unique 1×1 tracking pixel is embedded in every outgoing email. When the recipient opens it and their mail client loads images, the pixel fires and MailTrack records the first-open time, open count, and (best-effort) the recipient's IP/user-agent. The status on your Sent page flips from `sent` → `delivered` → `opened` automatically.
 
-The Sent page runs two mechanisms in parallel:
+### Enterprise tier
 
-1. `setInterval` every 4 seconds — silent background fetch, compares previous status map, fires a toast if any email upgraded
-2. `visibilitychange` listener — fires an immediate fetch when the user switches back to the tab (Chrome throttles `setInterval` to ~60s in background tabs)
+Companies that already own a domain and a SendGrid account can onboard once — provide the SendGrid API key and a domain-authenticated From address — and every employee sends through that shared, properly-authenticated identity. No per-employee Gmail connection, no OAuth consent screens for staff, just join the organization and start sending.
 
-### Mass Emailing
+### Bulk email
 
-Send to multiple recipients in a single operation. The backend uses a **Redis + BullMQ** queue so large sends process in a background worker without blocking the HTTP server.
+Send to a list of recipients in one go. A background queue (Redis + BullMQ) processes each recipient with automatic retries, so a large send doesn't block the app or die on one bad address. A live progress bar shows sent/failed counts as it works.
 
-```
-POST /api/emails/send-bulk  → { jobId }
-GET  /api/emails/bulk-status/:jobId → { state, progress, result: { sent, failed, errors } }
-```
+### PDF sharing
 
-The UI shows a live progress bar while the worker processes each recipient. Results include a per-address breakdown of successes and failures.
+Upload a PDF, attach it to an email, and generate a share link — optionally password-protected and/or time-limited. Recipients open it in a built-in viewer, no account needed. View counts are tracked per document.
 
-### PDF Document Tracking
+---
 
-Upload PDF files to the platform (up to 20 MB). Each document tracks how many times it has been viewed and by whom.
-
-- Documents are stored on the server with UUID filenames (original names preserved in metadata)
-- View counts and per-view records (timestamp, IP) are stored in MongoDB
-- Documents can be attached to emails directly from the compose window
+## How sending works
 
 ```
-POST /api/documents/upload   → upload PDF, get documentId
-GET  /api/documents          → list own documents with view counts
+User composes an email
+        │
+        ▼
+Does the sender belong to an Enterprise org?
+        │                         │
+       yes                        no
+        │                         │
+        ▼                         ▼
+Send via the org's          Does the sender have
+SendGrid account            Gmail connected?
+(their own domain,                │
+already authenticated)           yes → Send via Gmail API
+                                   │    (genuinely from their
+                                  no    own gmail.com address)
+                                   │
+                          Rejected — connect
+                          Gmail or join an org
 ```
 
-### Secure Document Sharing
-
-Each document can have one or more share links. Share links support:
-
-- **Password protection** — bcrypt-hashed, validated server-side before a view token is issued
-- **Expiry** — share links expire at a set time; expired links return 410
-- **Revocation** — any share link can be deleted without affecting the document
-
-```
-POST /api/documents/:id/share  → { shareUrl, token, requiresPassword, expiresAt }
-GET  /api/share/:token         → { documentName, requiresPassword, expiresAt, accessCount }
-POST /api/share/:token/access  → validate password → return { viewToken }
-GET  /api/share/:token/file?vt=<viewToken>  → stream PDF
-```
-
-The share URL (`/share/:token`) is a public page — no account required. After password validation, the server issues a short-lived JWT (2-hour expiry) scoped to that specific share. The PDF is rendered in-browser using a canvas-based pdf.js viewer with page navigation and zoom controls.
+Either way, a tracking pixel is injected into the HTML before the message goes out, pointing back at MailTrack's own server. Nothing about tracking depends on which path sent the email.
 
 ---
 
@@ -92,30 +65,35 @@ email/
 │   ├── uploads/                 PDF storage (UUID filenames)
 │   └── src/
 │       ├── models/
-│       │   ├── User.ts          name, email (login), password, emailAddress
-│       │   ├── Email.ts         senderId, recipientId, status, events[], attachments[]
+│       │   ├── User.ts          login/profile + Gmail OAuth tokens + organizationId
+│       │   ├── Organization.ts  enterprise account: domain, SendGrid key, From address
+│       │   ├── Email.ts         senderId, to, status, events[], trackingToken, openCount
 │       │   ├── Document.ts      ownerId, originalName, storedName, viewCount, views[]
 │       │   └── ShareToken.ts    token, documentId, passwordHash, expiresAt, accessCount
+│       ├── services/
+│       │   ├── gmailService.ts      OAuth flow, token refresh, Gmail API send
+│       │   ├── sendgridService.ts   Enterprise SendGrid dispatch
+│       │   ├── dispatchService.ts   picks Gmail vs SendGrid per sender
+│       │   └── emailService.ts      tracking pixel injection
 │       ├── queues/
-│       │   └── emailQueue.ts    BullMQ queue + worker for bulk sending
+│       │   └── emailQueue.ts    BullMQ queue + worker for single and bulk sends
 │       ├── routes/
-│       │   ├── auth.ts          POST /register, POST /login, GET /me
-│       │   ├── emails.ts        POST /send, GET /sent, GET /inbox, GET /:id, PATCH /:id/open
-│       │   │                    POST /send-bulk, GET /bulk-status/:jobId
-│       │   │                    GET /users/search?q=
-│       │   ├── documents.ts     POST /upload, GET /, POST /:id/share, GET /:id/shares
-│       │   │                    DELETE /:id/shares/:tokenId, DELETE /:id
-│       │   └── share.ts         GET /:token, POST /:token/access, GET /:token/file
+│       │   ├── auth.ts          register, login, me, Google OAuth connect/callback
+│       │   ├── organizations.ts create / join / me
+│       │   ├── emails.ts        send, send-bulk, sent, inbox, bulk-status
+│       │   ├── track.ts         public tracking-pixel endpoint
+│       │   ├── documents.ts     upload, list, share, revoke, delete
+│       │   └── share.ts         public share-link access + PDF streaming
 │       └── middleware/
 │           └── auth.ts          JWT verify, attaches req.userId
 │
 └── client/                      React + Vite + TypeScript
     └── src/
-        ├── context/
-        │   └── AuthContext.tsx  JWT storage, rehydrate on refresh
+        ├── context/AuthContext.tsx   JWT storage, rehydrate on refresh
         ├── pages/
-        │   ├── Sent.tsx         outbox + 4s polling + visibilitychange + toast
-        │   ├── Inbox.tsx        inbox + 4s polling
+        │   ├── Sent.tsx         outbox, live status, Gmail/Enterprise banner
+        │   ├── Inbox.tsx        inbox for platform-to-platform mail
+        │   ├── Organization.tsx enterprise onboarding / join
         │   ├── Documents.tsx    PDF list, upload, share management
         │   ├── BulkCompose.tsx  mass email with live progress
         │   └── ShareView.tsx    public share page — password gate + PDF viewer
@@ -123,39 +101,7 @@ email/
             ├── EmailCompose.tsx  compose with autocomplete + PDF attachment
             ├── EmailDetail.tsx   email body, attachment cards, delivery timeline
             ├── PdfViewer.tsx     canvas-based pdf.js viewer (page nav, zoom)
-            └── StatusBadge.tsx   sent / delivered / opened
-```
-
-### Data Model
-
-```typescript
-// One document per message — both parties query the same record
-Email {
-  senderId:    ObjectId   // index: { senderId, createdAt }
-  recipientId: ObjectId   // index: { recipientId, createdAt }
-  from, to, subject, htmlBody, textBody: string
-  status:      "sent" | "delivered" | "opened"
-  events:      [{ type, timestamp }]
-  attachments: [{ documentId, name, shareUrl }]
-  createdAt:   Date
-}
-
-Document {
-  ownerId:      ObjectId
-  originalName: string
-  storedName:   string   // UUID-based, never exposed to users
-  size:         number
-  viewCount:    number
-  views:        [{ viewedAt, ip }]
-}
-
-ShareToken {
-  token:        string   // UUID, unique
-  documentId:   ObjectId
-  passwordHash: string?  // bcrypt
-  expiresAt:    Date?
-  accessCount:  number
-}
+            └── StatusBadge.tsx   sent / delivered / opened / failed
 ```
 
 ---
@@ -168,20 +114,19 @@ ShareToken {
 | Framework | Express |
 | Database | MongoDB + Mongoose |
 | Queue | Redis + BullMQ |
-| Auth | JWT (7-day expiry) |
+| Auth | JWT (7-day expiry) + Google OAuth 2.0 |
+| Mail dispatch | Gmail API (personal) / SendGrid API (enterprise) |
 | Frontend | React 19 + Vite + TypeScript |
 | PDF viewer | pdfjs-dist (canvas rendering) |
 | HTTP client | Axios |
 | Forms | react-hook-form |
 | Local infra | Docker (mongo:7, redis:7-alpine) |
 
-No external email provider. No WebSockets.
-
 ---
 
-## Running Locally
+## Running locally
 
-**Prerequisites:** Node.js 18+, Docker
+**Prerequisites:** Node.js 18+, Docker, a Google Cloud OAuth client (Gmail API enabled), and a public HTTPS tunnel to your server (e.g. `cloudflared tunnel --url http://localhost:5000`) so the tracking pixel is reachable.
 
 ```bash
 # 1. Start MongoDB and Redis
@@ -189,7 +134,7 @@ docker compose up -d
 
 # 2. Server
 cd server
-cp .env.example .env   # defaults work out of the box
+cp .env.example .env   # fill in your Google OAuth client + tunnel URL
 npm install
 npm run dev            # http://localhost:5000
 
@@ -205,73 +150,26 @@ npm run dev            # http://localhost:5173
 MONGODB_URI=mongodb://localhost:27017/emailservice
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=change_this_in_production
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/google/callback
+BASE_URL=https://your-tunnel-url             # public HTTPS, for the tracking pixel
 PORT=5000
 CLIENT_URL=http://localhost:5173
 ```
 
-No external credentials required.
+A note on the Google OAuth client: while it's in Google's "Testing" publishing status, only accounts you've explicitly added as test users (Google Cloud Console → OAuth consent screen → Test users) can connect. Moving to arbitrary users requires submitting the app for Google's verification review — a real external process, not a config change.
 
----
-
-## Demo
-
-### Email read receipts
-
-Register two accounts. Open the app in two browser windows (use incognito for the second).
-
-1. Sender composes → types recipient's platform address (autocomplete suggests registered users) → Send
-2. Recipient's inbox shows the email within 4 seconds
-3. Recipient opens the email
-4. Sender's sent list flips from `delivered` → `opened` within 4 seconds
-
-### Document sharing
-
-1. Go to **Documents** → upload a PDF
-2. Click **Share** → optionally set a password and expiry → Copy the share URL
-3. Open the share URL in a private window — enter password if set → PDF renders in browser
-4. Back in Documents, the view count increments
-
-### Mass email
-
-1. Go to **Mass Email** → paste multiple addresses (one per line)
-2. Write subject and body → Send
-3. Progress bar updates in real time as the background worker processes each recipient
+Enterprise customers don't need any of the Google setup — they just provide their own SendGrid API key and a domain-authenticated From address via the **Enterprise** page.
 
 ---
 
 ## Security
 
-- Share link passwords are bcrypt-hashed (cost 12) before storage — the plaintext is never stored
+- Gmail OAuth tokens and SendGrid API keys are stored with `select: false` in MongoDB — never returned by any API response, only readable by server code that explicitly asks for them
+- Share link passwords are bcrypt-hashed (cost 12) before storage
 - PDF files are served via authenticated view tokens (JWT, 2-hour expiry) — direct file paths are never exposed
 - File storage uses UUID filenames; path traversal is blocked server-side before any file read
-- The recipient-open endpoint verifies `recipientId === req.userId` — senders cannot self-mark
 - User search regex input is escaped before use in MongoDB `$regex` to prevent ReDoS
 - Multer rejects non-PDF MIME types and enforces a 20 MB file size limit
-
-## Users
-All platform users (9 total):                                                                                                                             
-  ┌─────────────┬──────────────────────┬─────────────────────┬─────────────┐    │    Name     │        Login         │  Platform Address   │  Password   │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤
-  │ Test User   │ test@test.com        │ test@yourdomain.com │ password123 │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Bob         │ bob@test.com         │ bob@mailtrack.local │ password123 │  
-  │ Recipient   │                      │                     │             │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Alice Chen  │ alice@mailtrack.dev  │ alice@mailtrack.io  │ password123 │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Marcus Webb │ marcus@mailtrack.dev │ marcus@mailtrack.io │ password123 │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Priya       │ priya@mailtrack.dev  │ priya@mailtrack.io  │ password123 │  
-  │ Sharma      │                      │                     │             │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ James       │ james@mailtrack.dev  │ james@mailtrack.io  │ password123 │  
-  │ Okafor      │                      │                     │             │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Sofia Reyes │ sofia@mailtrack.dev  │ sofia@mailtrack.io  │ password123 │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Liam        │ liam@mailtrack.dev   │ liam@mailtrack.io   │ password123 │  
-  │ Nakamura    │                      │                     │             │  
-  ├─────────────┼──────────────────────┼─────────────────────┼─────────────┤  
-  │ Anya        │ anya@mailtrack.dev   │ anya@mailtrack.io   │ password123 │  
-  │ Petrova     │                      │                     │             │  
-  └─────────────┴──────────────────────┴─────────────────────┴─────────────┘  
+- The tracking pixel endpoint always returns a valid image and never errors visibly, even if the token is unrecognized — a broken image would be a dead giveaway that tracking is happening

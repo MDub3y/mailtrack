@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { protect, AuthRequest } from '../middleware/auth';
 import { Email } from '../models/Email';
 import { User } from '../models/User';
+import { resolveSenderIdentity } from '../services/dispatchService';
 import type { BulkEmailJob } from '../queues/emailQueue';
 
 const router = Router();
@@ -11,7 +12,8 @@ router.use(protect);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // POST /api/emails/send
-// Sends a real email as the sender's own connected Gmail account (queued for
+// Sends a real email as the sender's own organization (SendGrid, if they
+// belong to one) or their connected Gmail account (queued for
 // retry/reliability), with a tracking pixel injected so we know when it's
 // opened. The recipient does NOT need to be a registered platform user.
 router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
@@ -35,12 +37,13 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
     const sender = await User.findById(req.userId);
     if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
 
-    if (!sender.gmailAddress) {
-      res.status(400).json({ message: 'Connect your Gmail account before sending tracked email.' });
+    const identity = await resolveSenderIdentity(req.userId!);
+    if (!identity) {
+      res.status(400).json({ message: 'Connect your Gmail account (or join an organization) before sending tracked email.' });
       return;
     }
 
-    if (toAddress === sender.gmailAddress.toLowerCase()) {
+    if (toAddress === identity.fromAddress.toLowerCase()) {
       res.status(400).json({ message: 'You cannot send an email to yourself.' });
       return;
     }
@@ -52,7 +55,7 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
     const email = await Email.create({
       senderId:    sender._id,
       recipientId: recipient?._id,
-      from: sender.gmailAddress,
+      from: identity.fromAddress,
       to:   toAddress,
       subject,
       htmlBody: htmlBody || '',
@@ -157,8 +160,9 @@ router.post('/send-bulk', async (req: AuthRequest, res: Response): Promise<void>
     const sender = await User.findById(req.userId);
     if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
 
-    if (!sender.gmailAddress) {
-      res.status(400).json({ message: 'Connect your Gmail account before sending tracked email.' });
+    const identity = await resolveSenderIdentity(req.userId!);
+    if (!identity) {
+      res.status(400).json({ message: 'Connect your Gmail account (or join an organization) before sending tracked email.' });
       return;
     }
 
@@ -166,7 +170,7 @@ router.post('/send-bulk', async (req: AuthRequest, res: Response): Promise<void>
     const { emailQueue } = await import('../queues/emailQueue');
     const job = await emailQueue.add('send-bulk', {
       senderId:           req.userId!,
-      senderEmailAddress: sender.gmailAddress,
+      senderEmailAddress: identity.fromAddress,
       recipients:         recipients.map((r) => r.toLowerCase().trim()).filter(Boolean),
       subject,
       htmlBody:  htmlBody  || '',

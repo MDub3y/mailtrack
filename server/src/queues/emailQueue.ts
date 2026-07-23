@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Email } from '../models/Email';
 import { User } from '../models/User';
 import { injectTrackingPixel } from '../services/emailService';
-import { sendViaGmail } from '../services/gmailService';
+import { dispatchEmail } from '../services/dispatchService';
 
 export interface BulkEmailJob {
   senderId: string;
@@ -43,7 +43,7 @@ async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
   if (!email) return;
 
   const html = injectTrackingPixel(email.htmlBody, pixelUrlFor(email.trackingToken));
-  const { providerMessageId } = await sendViaGmail(email.senderId.toString(), {
+  const { providerMessageId } = await dispatchEmail(email.senderId.toString(), {
     to: email.to,
     subject: email.subject,
     html,
@@ -92,7 +92,7 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
       });
 
       try {
-        const { providerMessageId } = await sendViaGmail(senderId, {
+        const { providerMessageId } = await dispatchEmail(senderId, {
           to: addr, subject, html, text: textBody,
         });
         email.status = 'delivered';

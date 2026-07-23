@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -50,6 +50,14 @@ export const documentsApi = {
     api.post<{ token: string; shareUrl: string; requiresPassword: boolean; expiresAt?: string }>(`/documents/${id}/share`, opts),
   listShares: (id: string) => api.get<ShareTokenInfo[]>(`/documents/${id}/shares`),
   revokeShare: (docId: string, tokenId: string) => api.delete(`/documents/${docId}/shares/${tokenId}`),
+};
+
+export const organizationsApi = {
+  create: (data: { name: string; domain: string; sendgridApiKey: string; fromEmail: string }) =>
+    api.post<Organization>('/organizations', data),
+  join: (organizationId: string) =>
+    api.post<Organization>('/organizations/join', { organizationId }),
+  me: () => api.get<Organization>('/organizations/me'),
 };
 
 export const bulkEmailApi = {

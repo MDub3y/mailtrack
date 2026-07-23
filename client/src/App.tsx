@@ -9,6 +9,7 @@ import { Documents } from './pages/Documents';
 import { BulkCompose } from './pages/BulkCompose';
 import { ShareView } from './pages/ShareView';
 import { Landing } from './pages/Landing';
+import { Organization } from './pages/Organization';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode; }) => {
   const { user, isLoading } = useAuth();
@@ -112,6 +113,21 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
               </svg>
               Mass Dispatch
             </NavLink>
+
+            <NavLink
+              to="/organization"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? 'bg-[#ffffff] text-[#0f172a] border border-[#eaedf1] shadow-sm'
+                  : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]'
+                }`
+              }
+            >
+              <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2M5 21H3m4-14h.01M7 11h.01M7 15h.01M11 7h.01M11 11h.01M11 15h.01M15 7h.01M15 11h.01M15 15h.01" />
+              </svg>
+              Enterprise
+            </NavLink>
           </nav>
         </div>
 
@@ -188,6 +204,14 @@ const AppRoutes = () => (
               element={
                 <ProtectedRoute>
                   <BulkCompose />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/organization"
+              element={
+                <ProtectedRoute>
+                  <Organization />
                 </ProtectedRoute>
               }
             />

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { emailsApi, authApi } from '../api';
-import type { Email, EmailStatus } from '../types';
+import type { Email, EmailStatus, User } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmailCompose } from '../components/EmailCompose';
 import { EmailDetail } from '../components/EmailDetail';
@@ -113,7 +113,7 @@ export const Sent = () => {
         </button>
       </div>
 
-      <GmailConnectBanner gmailAddress={user?.gmailAddress} />
+      <SendIdentityBanner user={user} />
 
       {/* Main List */}
       <div className="flex-1 overflow-y-auto">
@@ -137,18 +137,26 @@ export const Sent = () => {
   );
 };
 
-const GmailConnectBanner = ({ gmailAddress }: { gmailAddress?: string; }) => {
-  if (gmailAddress) {
+const SendIdentityBanner = ({ user }: { user: User | null; }) => {
+  if (user?.organizationId) {
     return (
       <div className="px-8 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2 text-xs text-emerald-700 font-medium">
         <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
-        Sending as <span className="font-mono">{gmailAddress}</span> via Gmail
+        Sending as <span className="font-mono">{user.organizationId.fromEmail}</span> via {user.organizationId.name} (Enterprise)
+      </div>
+    );
+  }
+  if (user?.gmailAddress) {
+    return (
+      <div className="px-8 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2 text-xs text-emerald-700 font-medium">
+        <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
+        Sending as <span className="font-mono">{user.gmailAddress}</span> via Gmail
       </div>
     );
   }
   return (
     <div className="px-8 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-4 text-xs text-amber-800">
-      <span className="font-medium">Connect Gmail to send real, tracked email from your own address.</span>
+      <span className="font-medium">Connect Gmail, or join a company Enterprise account, to send real, tracked email.</span>
       <a
         href={authApi.googleConnectUrl()}
         className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-semibold shrink-0 transition"
