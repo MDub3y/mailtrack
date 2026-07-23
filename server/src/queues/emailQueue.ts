@@ -3,7 +3,8 @@ import IORedis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { Email } from '../models/Email';
 import { User } from '../models/User';
-import { sendExternalEmail, injectTrackingPixel } from '../services/emailService';
+import { injectTrackingPixel } from '../services/emailService';
+import { sendViaGmail } from '../services/gmailService';
 
 export interface BulkEmailJob {
   senderId: string;
@@ -42,9 +43,8 @@ async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
   if (!email) return;
 
   const html = injectTrackingPixel(email.htmlBody, pixelUrlFor(email.trackingToken));
-  const { providerMessageId } = await sendExternalEmail({
+  const { providerMessageId } = await sendViaGmail(email.senderId.toString(), {
     to: email.to,
-    from: email.from,
     subject: email.subject,
     html,
     text: email.textBody,
@@ -92,8 +92,8 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
       });
 
       try {
-        const { providerMessageId } = await sendExternalEmail({
-          to: addr, from: senderEmailAddress, subject, html, text: textBody,
+        const { providerMessageId } = await sendViaGmail(senderId, {
+          to: addr, subject, html, text: textBody,
         });
         email.status = 'delivered';
         email.providerMessageId = providerMessageId;

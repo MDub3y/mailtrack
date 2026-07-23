@@ -3,6 +3,7 @@ export interface User {
   name: string;
   email: string;
   emailAddress: string;
+  gmailAddress?: string;
 }
 
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';

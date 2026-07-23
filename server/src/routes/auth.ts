@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { protect, AuthRequest } from '../middleware/auth';
+import { buildGoogleAuthUrl, connectGmailAccount } from '../services/gmailService';
 
 const router = Router();
 
@@ -78,6 +79,49 @@ router.get('/me', protect, async (req: AuthRequest, res: Response): Promise<void
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: String(err) });
+  }
+});
+
+// GET /api/auth/google?token=<platformJWT>
+// Kicks off the Gmail OAuth consent flow. Uses a query-param token (rather
+// than protect middleware) because this is a plain browser navigation, not
+// an XHR call — the platform JWT is round-tripped through Google's `state`
+// param so the callback knows which platform user to attach tokens to.
+router.get('/google', (req: Request, res: Response): void => {
+  const token = req.query.token as string | undefined;
+  if (!token) { res.status(400).json({ message: 'Missing token' }); return; }
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET!);
+  } catch {
+    res.status(401).json({ message: 'Invalid or expired token' });
+    return;
+  }
+
+  res.redirect(buildGoogleAuthUrl(token));
+});
+
+// GET /api/auth/google/callback?code=...&state=<platformJWT>
+router.get('/google/callback', async (req: Request, res: Response): Promise<void> => {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+
+  if (error) {
+    res.redirect(`${clientUrl}/sent?gmail=denied`);
+    return;
+  }
+  if (!code || !state) {
+    res.redirect(`${clientUrl}/sent?gmail=error`);
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(state, process.env.JWT_SECRET!) as { userId: string };
+    await connectGmailAccount(decoded.userId, code);
+    res.redirect(`${clientUrl}/sent?gmail=connected`);
+  } catch (err) {
+    console.error('Gmail connect error:', err);
+    res.redirect(`${clientUrl}/sent?gmail=error`);
   }
 });
 

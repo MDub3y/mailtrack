@@ -11,7 +11,7 @@ router.use(protect);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // POST /api/emails/send
-// Sends a real email to any external address via SendGrid (queued for
+// Sends a real email as the sender's own connected Gmail account (queued for
 // retry/reliability), with a tracking pixel injected so we know when it's
 // opened. The recipient does NOT need to be a registered platform user.
 router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
@@ -35,7 +35,12 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
     const sender = await User.findById(req.userId);
     if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
 
-    if (toAddress === sender.emailAddress.toLowerCase()) {
+    if (!sender.gmailAddress) {
+      res.status(400).json({ message: 'Connect your Gmail account before sending tracked email.' });
+      return;
+    }
+
+    if (toAddress === sender.gmailAddress.toLowerCase()) {
       res.status(400).json({ message: 'You cannot send an email to yourself.' });
       return;
     }
@@ -47,7 +52,7 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
     const email = await Email.create({
       senderId:    sender._id,
       recipientId: recipient?._id,
-      from: sender.emailAddress,
+      from: sender.gmailAddress,
       to:   toAddress,
       subject,
       htmlBody: htmlBody || '',
@@ -152,11 +157,16 @@ router.post('/send-bulk', async (req: AuthRequest, res: Response): Promise<void>
     const sender = await User.findById(req.userId);
     if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
 
+    if (!sender.gmailAddress) {
+      res.status(400).json({ message: 'Connect your Gmail account before sending tracked email.' });
+      return;
+    }
+
     // Import queue lazily to avoid circular deps
     const { emailQueue } = await import('../queues/emailQueue');
     const job = await emailQueue.add('send-bulk', {
       senderId:           req.userId!,
-      senderEmailAddress: sender.emailAddress,
+      senderEmailAddress: sender.gmailAddress,
       recipients:         recipients.map((r) => r.toLowerCase().trim()).filter(Boolean),
       subject,
       htmlBody:  htmlBody  || '',
