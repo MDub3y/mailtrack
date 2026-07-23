@@ -20,7 +20,7 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
     handleSubmit,
     setValue,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { isSubmitting },
     reset,
   } = useForm<FormData>();
   const [suggestions, setSuggestions] = useState<PlatformUser[]>([]);

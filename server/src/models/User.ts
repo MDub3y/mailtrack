@@ -7,6 +7,13 @@ export interface IUser extends Document {
   password: string;
   emailAddress: string;
   createdAt: Date;
+  // Gmail OAuth — lets this user send real tracked mail as their own gmail.com
+  // address via the Gmail API, instead of relaying through a third-party ESP
+  // (which Gmail's DMARC policy would reject for a gmail.com From address).
+  googleAccessToken?: string;
+  googleRefreshToken?: string;
+  googleTokenExpiry?: Date;
+  gmailAddress?: string;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -16,6 +23,10 @@ const UserSchema = new Schema<IUser>({
   password: { type: String, required: true },
   emailAddress: { type: String, required: true, unique: true, lowercase: true, trim: true },
   createdAt: { type: Date, default: Date.now },
+  googleAccessToken:  { type: String, select: false },
+  googleRefreshToken: { type: String, select: false },
+  googleTokenExpiry:  { type: Date, select: false },
+  gmailAddress:       { type: String },
 });
 
 UserSchema.pre('save', async function (next) {

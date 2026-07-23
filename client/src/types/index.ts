@@ -3,9 +3,10 @@ export interface User {
   name: string;
   email: string;
   emailAddress: string;
+  gmailAddress?: string;
 }
 
-export type EmailStatus = 'sent' | 'delivered' | 'opened';
+export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
 
 export interface EmailEvent {
   type: EmailStatus;
@@ -21,7 +22,7 @@ export interface DocumentAttachment {
 export interface Email {
   _id: string;
   senderId: string;
-  recipientId: string;
+  recipientId?: string;
   from: string;
   to: string;
   subject: string;

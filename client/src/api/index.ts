@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment } from '../types';
 
-const api = axios.create({ baseURL: 'http://localhost:5000/api' });
+const API_BASE = 'http://localhost:5000/api';
+const api = axios.create({ baseURL: API_BASE });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -26,6 +27,7 @@ export const authApi = {
   login: (data: { email: string; password: string }) =>
     api.post<AuthResponse>('/auth/login', data),
   me: () => api.get<User>('/auth/me'),
+  googleConnectUrl: () => `${API_BASE}/auth/google?token=${encodeURIComponent(localStorage.getItem('token') || '')}`,
 };
 
 export const emailsApi = {
@@ -34,7 +36,6 @@ export const emailsApi = {
   getSent:  () => api.get<Email[]>('/emails/sent'),
   getInbox: () => api.get<Email[]>('/emails/inbox'),
   getById:  (id: string) => api.get<Email>(`/emails/${id}`),
-  markOpened: (id: string) => api.patch<Email>(`/emails/${id}/open`),
   searchUsers: (q: string) => api.get<PlatformUser[]>(`/emails/users/search?q=${encodeURIComponent(q)}`),
 };
 

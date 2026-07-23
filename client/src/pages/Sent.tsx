@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { emailsApi } from '../api';
+import { emailsApi, authApi } from '../api';
 import type { Email, EmailStatus } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmailCompose } from '../components/EmailCompose';
 import { EmailDetail } from '../components/EmailDetail';
 import { Toast, type ToastMessage } from '../components/Toast';
+import { useAuth } from '../context/AuthContext';
 
-const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2 };
+const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2, failed: 2 };
 
 export const Sent = () => {
+  const { user, refreshUser } = useAuth();
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
@@ -34,9 +36,9 @@ export const Sent = () => {
         const prev = prevStatusRef.current[email._id];
         if (prev && STATUS_RANK[email.status] > STATUS_RANK[prev]) {
           const labels: Record<EmailStatus, string> = {
-            sent: 'Sent', delivered: 'Delivered', opened: 'Opened',
+            sent: 'Sent', delivered: 'Delivered', opened: 'Opened', failed: 'Failed',
           };
-          addToast(`"${email.subject}" — ${labels[email.status]}`, 'success');
+          addToast(`"${email.subject}" — ${labels[email.status]}`, email.status === 'failed' ? 'error' : 'success');
         }
         prevStatusRef.current[email._id] = email.status;
       });
@@ -48,6 +50,23 @@ export const Sent = () => {
   }, [addToast]);
 
   useEffect(() => { fetchEmails(); }, [fetchEmails]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gmail = params.get('gmail');
+    if (!gmail) return;
+
+    if (gmail === 'connected') {
+      refreshUser().then(() => addToast('Gmail connected — you can now send tracked email.', 'success'));
+    } else if (gmail === 'denied') {
+      addToast('Gmail connection was cancelled.', 'info');
+    } else {
+      addToast('Failed to connect Gmail. Please try again.', 'error');
+    }
+
+    window.history.replaceState({}, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => fetchEmails(true), 4000);
@@ -73,15 +92,6 @@ export const Sent = () => {
     setSelected(res.data);
   };
 
-  const handleOpened = (emailId: string) => {
-    setEmails((prev) => prev.map((e) =>
-      e._id === emailId
-        ? { ...e, status: 'opened', events: [...e.events, { type: 'opened', timestamp: new Date().toISOString() }] }
-        : e
-    ));
-    addToast('Email was opened by recipient', 'success');
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-[#ffffff]">
       {/* Header Bar */}
@@ -103,6 +113,8 @@ export const Sent = () => {
         </button>
       </div>
 
+      <GmailConnectBanner gmailAddress={user?.gmailAddress} />
+
       {/* Main List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
@@ -119,8 +131,30 @@ export const Sent = () => {
       </div>
 
       {composing && <EmailCompose onSent={handleSent} onClose={() => setComposing(false)} />}
-      {selected && <EmailDetail email={selected} onClose={() => setSelected(null)} onOpened={handleOpened} />}
+      {selected && <EmailDetail email={selected} onClose={() => setSelected(null)} />}
       <Toast toasts={toasts} onRemove={removeToast} />
+    </div>
+  );
+};
+
+const GmailConnectBanner = ({ gmailAddress }: { gmailAddress?: string; }) => {
+  if (gmailAddress) {
+    return (
+      <div className="px-8 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2 text-xs text-emerald-700 font-medium">
+        <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
+        Sending as <span className="font-mono">{gmailAddress}</span> via Gmail
+      </div>
+    );
+  }
+  return (
+    <div className="px-8 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-4 text-xs text-amber-800">
+      <span className="font-medium">Connect Gmail to send real, tracked email from your own address.</span>
+      <a
+        href={authApi.googleConnectUrl()}
+        className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-semibold shrink-0 transition"
+      >
+        Connect Gmail
+      </a>
     </div>
   );
 };
