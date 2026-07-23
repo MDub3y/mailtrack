@@ -1,9 +1,17 @@
+export interface Organization {
+  _id: string;
+  name: string;
+  domain: string;
+  fromEmail: string;
+}
+
 export interface User {
   _id: string;
   name: string;
   email: string;
   emailAddress: string;
   gmailAddress?: string;
+  organizationId?: Organization;
 }
 
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
@@ -11,6 +19,7 @@ export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
 export interface EmailEvent {
   type: EmailStatus;
   timestamp: string;
+  automated?: boolean;
 }
 
 export interface DocumentAttachment {

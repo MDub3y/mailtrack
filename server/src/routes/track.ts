@@ -11,6 +11,29 @@ const PIXEL = Buffer.from(
   'base64'
 );
 
+// Mail providers automatically prefetch/scan images embedded in new email
+// for phishing/malware — before any human opens anything — as part of their
+// own spam defenses. Because that prescan is proxied through the same
+// infrastructure (e.g. Gmail's ggpht.com/GoogleImageProxy) as a genuine
+// human-triggered image load, the two are indistinguishable at the network
+// level. Observed directly in this app's own logs: every prescanned message
+// fired its pixel within single-digit-to-tens of seconds of delivery, and
+// some carried a synthetic User-Agent claiming to be Chrome, Safari, AND
+// Edge simultaneously (no real browser does this — "Edge/12.246" paired
+// with an ancient Chrome/42 build is a known scanner fingerprint).
+//
+// This can never be made 100% accurate — no pixel-tracking product can
+// (Mailtrack, HubSpot, Yesware all have the same false-positive class) —
+// but timing is the one signal the scanner can't mask: a real human did not
+// open a message within a few seconds of it landing, every single time.
+const AUTOMATED_SCAN_GRACE_MS = 60_000;
+const SCANNER_UA_PATTERN = /Edge\/12\.246/i;
+
+function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boolean {
+  if (SCANNER_UA_PATTERN.test(userAgent)) return true;
+  return msSinceCreated < AUTOMATED_SCAN_GRACE_MS;
+}
+
 // GET /api/track/:token/pixel.png — public, unauthenticated (mirrors the
 // public-route pattern already used for PDF share links in routes/share.ts).
 router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<void> => {
@@ -20,12 +43,17 @@ router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<voi
       const now = new Date();
       const ip = ((req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || req.socket.remoteAddress || '';
       const userAgent = req.headers['user-agent'] || '';
+      const automated = isLikelyAutomatedScan(userAgent, now.getTime() - email.createdAt.getTime());
 
-      email.openCount += 1;
-      email.lastOpenedAt = now;
-      if (!email.firstOpenedAt) email.firstOpenedAt = now;
-      if (email.status !== 'opened') email.status = 'opened';
-      email.events.push({ type: 'opened', timestamp: now, ip, userAgent });
+      email.events.push({ type: 'opened', timestamp: now, ip, userAgent, automated });
+
+      if (!automated) {
+        email.openCount += 1;
+        email.lastOpenedAt = now;
+        if (!email.firstOpenedAt) email.firstOpenedAt = now;
+        if (email.status !== 'opened') email.status = 'opened';
+      }
+
       await email.save();
     }
   } catch (err) {

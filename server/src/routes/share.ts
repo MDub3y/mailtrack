@@ -7,7 +7,7 @@ import { ShareToken } from '../models/ShareToken';
 import { DocModel } from '../models/Document';
 
 const router = Router();
-const JWT_SECRET  = process.env.JWT_SECRET || 'change_this_in_production';
+const JWT_SECRET  = process.env.JWT_SECRET!;
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 
 // GET /api/share/:token — public metadata

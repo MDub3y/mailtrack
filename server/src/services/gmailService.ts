@@ -135,7 +135,21 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, '');
 }
 
+// Defense in depth: a raw From/To header is interpolated directly below —
+// if either contained a CR/LF, an attacker could inject extra headers
+// (e.g. a hidden Bcc) into the outgoing message. Callers already validate
+// recipient addresses, but this is the actual dangerous sink, so it's
+// checked again here regardless of what the caller did.
+function assertNoHeaderInjection(value: string, field: string): void {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`Invalid ${field}: contains a line break`);
+  }
+}
+
 function buildMimeMessage(params: { from: string; to: string; subject: string; html: string; text: string }): string {
+  assertNoHeaderInjection(params.from, 'from');
+  assertNoHeaderInjection(params.to, 'to');
+
   const boundary = `mtb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const lines = [
     `From: ${params.from}`,

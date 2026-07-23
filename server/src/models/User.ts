@@ -14,6 +14,10 @@ export interface IUser extends Document {
   googleRefreshToken?: string;
   googleTokenExpiry?: Date;
   gmailAddress?: string;
+  // Enterprise tier — if set, this user sends through their organization's
+  // own SendGrid account (domain-authenticated by the enterprise at
+  // onboarding) instead of needing to connect a personal Gmail account.
+  organizationId?: mongoose.Types.ObjectId;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -27,6 +31,7 @@ const UserSchema = new Schema<IUser>({
   googleRefreshToken: { type: String, select: false },
   googleTokenExpiry:  { type: Date, select: false },
   gmailAddress:       { type: String },
+  organizationId:     { type: Schema.Types.ObjectId, ref: 'Organization' },
 });
 
 UserSchema.pre('save', async function (next) {
