@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import type { Email } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { useAuth } from '../context/AuthContext';
@@ -26,6 +27,11 @@ export const EmailDetail = ({ email, onClose }: Props) => {
   }, [onClose]);
 
   const isReceived = user?._id === email.recipientId;
+
+  // Email bodies come from free-text compose input (any platform user could
+  // have typed raw HTML/script into it) and are rendered via
+  // dangerouslySetInnerHTML — sanitize before render to prevent stored XSS.
+  const safeHtmlBody = useMemo(() => DOMPurify.sanitize(email.htmlBody || ''), [email.htmlBody]);
 
   return (
     <div
@@ -61,7 +67,7 @@ export const EmailDetail = ({ email, onClose }: Props) => {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="text-sm text-[#0f172a] leading-relaxed">
             {email.htmlBody ? (
-              <div dangerouslySetInnerHTML={{ __html: email.htmlBody }} />
+              <div dangerouslySetInnerHTML={{ __html: safeHtmlBody }} />
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-xs text-[#374151]">
                 {email.textBody || '(empty message)'}
@@ -96,7 +102,7 @@ export const EmailDetail = ({ email, onClose }: Props) => {
                 Delivery Timeline
               </span>
               <div className="space-y-3">
-                {email.events.map((evt, i) => {
+                {email.events.filter((evt) => !evt.automated).map((evt, i) => {
                   const m = eventLabel[evt.type] ?? { label: evt.type, color: '#64748b' };
                   return (
                     <div key={i} className="flex items-center gap-3">
@@ -112,6 +118,11 @@ export const EmailDetail = ({ email, onClose }: Props) => {
                     </div>
                   );
                 })}
+                {email.events.some((evt) => evt.automated) && (
+                  <div className="text-[10px] text-[#94a3b8] italic pt-1">
+                    (Filtered {email.events.filter((e) => e.automated).length} automated mail-scanner prefetch{email.events.filter((e) => e.automated).length !== 1 ? 'es' : ''} — not counted as opens)
+                  </div>
+                )}
               </div>
             </div>
           )}

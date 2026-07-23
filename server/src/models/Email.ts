@@ -14,6 +14,10 @@ export interface IEmailEvent {
   timestamp: Date;
   userAgent?: string;
   ip?: string;
+  // True when a pixel hit was classified as an automated mail-security scan
+  // rather than a genuine human open (see routes/track.ts) — recorded for
+  // visibility, but excluded from status/openCount.
+  automated?: boolean;
 }
 
 export interface IEmail extends Document {
@@ -42,6 +46,7 @@ const EmailEventSchema = new Schema<IEmailEvent>(
     timestamp: { type: Date, default: Date.now },
     userAgent: { type: String },
     ip: { type: String },
+    automated: { type: Boolean },
   },
   { _id: false }
 );

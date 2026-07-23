@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 import { User } from '../models/User';
 import { protect, AuthRequest } from '../middleware/auth';
 import { buildGoogleAuthUrl, connectGmailAccount } from '../services/gmailService';
@@ -9,8 +10,18 @@ const router = Router();
 const signToken = (userId: string): string =>
   jwt.sign({ userId }, process.env.JWT_SECRET!, { expiresIn: '7d' });
 
+// Credential-stuffing / brute-force protection on the auth endpoints —
+// keyed per-IP, not per-account, since an attacker can enumerate accounts.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many attempts. Please try again later.' },
+});
+
 // POST /api/auth/register
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
+router.post('/register', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, emailAddress } = req.body as {
       name: string;
@@ -21,6 +32,11 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
     if (!name || !email || !password || !emailAddress) {
       res.status(400).json({ message: 'All fields are required' });
+      return;
+    }
+
+    if (password.length < 8) {
+      res.status(400).json({ message: 'Password must be at least 8 characters' });
       return;
     }
 
@@ -43,7 +59,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
+router.post('/login', authLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body as { email: string; password: string };
 

@@ -171,7 +171,10 @@ router.post('/send-bulk', async (req: AuthRequest, res: Response): Promise<void>
     const job = await emailQueue.add('send-bulk', {
       senderId:           req.userId!,
       senderEmailAddress: identity.fromAddress,
-      recipients:         recipients.map((r) => r.toLowerCase().trim()).filter(Boolean),
+      // Same validation as the single-send route — a recipient string
+      // containing CR/LF could otherwise inject extra headers into the raw
+      // MIME message built for Gmail sends.
+      recipients:         recipients.map((r) => r.toLowerCase().trim()).filter((r) => EMAIL_RE.test(r)),
       subject,
       htmlBody:  htmlBody  || '',
       textBody:  textBody  || '',

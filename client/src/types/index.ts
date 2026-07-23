@@ -19,6 +19,7 @@ export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
 export interface EmailEvent {
   type: EmailStatus;
   timestamp: string;
+  automated?: boolean;
 }
 
 export interface DocumentAttachment {

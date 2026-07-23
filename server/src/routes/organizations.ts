@@ -30,11 +30,29 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
+    const normalizedDomain = domain.toLowerCase().trim();
+    const normalizedFromEmail = fromEmail.toLowerCase().trim();
+    const userDomain = user.email.split('@')[1]?.toLowerCase();
+    if (userDomain !== normalizedDomain) {
+      res.status(403).json({ message: `Your account email must be on the ${normalizedDomain} domain to onboard it.` });
+      return;
+    }
+    if (normalizedFromEmail.split('@')[1] !== normalizedDomain) {
+      res.status(400).json({ message: `fromEmail must be on the ${normalizedDomain} domain.` });
+      return;
+    }
+
+    const existing = await Organization.findOne({ domain: normalizedDomain });
+    if (existing) {
+      res.status(409).json({ message: 'An organization for this domain already exists — ask a member for the organization ID to join it.' });
+      return;
+    }
+
     const org = await Organization.create({
       name,
-      domain: domain.toLowerCase().trim(),
+      domain: normalizedDomain,
       sendgridApiKey,
-      fromEmail: fromEmail.toLowerCase().trim(),
+      fromEmail: normalizedFromEmail,
       createdBy: user._id,
     });
 
@@ -63,6 +81,16 @@ router.post('/join', async (req: AuthRequest, res: Response): Promise<void> => {
     if (!user) { res.status(404).json({ message: 'User not found' }); return; }
     if (user.organizationId) {
       res.status(400).json({ message: 'You already belong to an organization' });
+      return;
+    }
+
+    // Require the joining user's own email to actually be on the org's
+    // domain — otherwise anyone who learns/guesses an organization ID could
+    // join it and start sending tracked email "as" a company they have no
+    // affiliation with, through that company's own SendGrid account.
+    const userDomain = user.email.split('@')[1]?.toLowerCase();
+    if (userDomain !== org.domain) {
+      res.status(403).json({ message: `Your account email must be on the ${org.domain} domain to join this organization.` });
       return;
     }
 
