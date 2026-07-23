@@ -29,7 +29,8 @@ router.get('/:token', async (req: Request, res: Response): Promise<void> => {
       accessCount:      st.accessCount,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Share route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -70,7 +71,8 @@ router.post('/:token/access', async (req: Request, res: Response): Promise<void>
 
     res.json({ viewToken, documentName: doc.originalName });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Share route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -111,7 +113,8 @@ router.get('/:token/file', async (req: Request, res: Response): Promise<void> =>
     res.setHeader('Cache-Control', 'no-store, no-cache');
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Share route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
