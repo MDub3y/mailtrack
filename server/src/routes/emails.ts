@@ -76,7 +76,7 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
     res.status(201).json(email);
   } catch (err) {
     console.error('Send error:', err);
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -89,7 +89,8 @@ router.get('/sent', async (req: AuthRequest, res: Response): Promise<void> => {
       .lean();
     res.json(emails);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Email route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -102,7 +103,8 @@ router.get('/inbox', async (req: AuthRequest, res: Response): Promise<void> => {
       .lean();
     res.json(emails);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Email route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -117,7 +119,8 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
     if (!email) { res.status(404).json({ message: 'Email not found' }); return; }
     res.json(email);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Email route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -139,7 +142,8 @@ router.get('/users/search', async (req: AuthRequest, res: Response): Promise<voi
 
     res.json(users);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Email route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -183,7 +187,7 @@ router.post('/send-bulk', async (req: AuthRequest, res: Response): Promise<void>
     res.status(202).json({ jobId: job.id, recipientCount: recipients.length });
   } catch (err) {
     console.error('Bulk email queue error:', err);
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -201,7 +205,8 @@ router.get('/bulk-status/:jobId', async (req: AuthRequest, res: Response): Promi
 
     res.json({ jobId: job.id, state, progress, result: job.returnvalue, failedReason: job.failedReason });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Email route error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

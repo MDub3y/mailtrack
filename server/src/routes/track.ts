@@ -16,17 +16,27 @@ const PIXEL = Buffer.from(
 // own spam defenses. Because that prescan is proxied through the same
 // infrastructure (e.g. Gmail's ggpht.com/GoogleImageProxy) as a genuine
 // human-triggered image load, the two are indistinguishable at the network
-// level. Observed directly in this app's own logs: every prescanned message
-// fired its pixel within single-digit-to-tens of seconds of delivery, and
-// some carried a synthetic User-Agent claiming to be Chrome, Safari, AND
-// Edge simultaneously (no real browser does this — "Edge/12.246" paired
-// with an ancient Chrome/42 build is a known scanner fingerprint).
+// level in the general case.
 //
-// This can never be made 100% accurate — no pixel-tracking product can
-// (Mailtrack, HubSpot, Yesware all have the same false-positive class) —
-// but timing is the one signal the scanner can't mask: a real human did not
-// open a message within a few seconds of it landing, every single time.
-const AUTOMATED_SCAN_GRACE_MS = 60_000;
+// One signal IS reliable: some scanners send a synthetic User-Agent
+// claiming to be Chrome, Safari, AND Edge simultaneously (no real browser
+// does this — "Edge/12.246" paired with an ancient Chrome/42 build is a
+// known scanner fingerprint). That's checked unconditionally, regardless of
+// timing.
+//
+// Timing alone is NOT a reliable second signal — an earlier version of this
+// filter also suppressed anything within 60s of delivery, which incorrectly
+// swallowed a real open from someone actively watching for a test email
+// (a completely normal thing to do). A human deliberately watching for a
+// message can plausibly open it in under 10 seconds, so that grace window
+// produced false negatives, not just fewer false positives. The remaining
+// floor here is deliberately tiny — just enough to catch a scan so
+// instantaneous no human input could possibly explain it — not a real
+// disambiguator. Some automated GoogleImageProxy prescans without the
+// distinctive UA will still register as opens; that residual noise is a
+// known, unsolved limitation shared by every pixel-tracking product, not
+// something fixable from here.
+const AUTOMATED_SCAN_GRACE_MS = 3_000;
 const SCANNER_UA_PATTERN = /Edge\/12\.246/i;
 
 function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boolean {

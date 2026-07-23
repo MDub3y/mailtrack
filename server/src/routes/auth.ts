@@ -54,7 +54,8 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
       user: { _id: user._id, name: user.name, email: user.email, emailAddress: user.emailAddress },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Auth error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -80,7 +81,8 @@ router.post('/login', authLimiter, async (req: Request, res: Response): Promise<
       user: { _id: user._id, name: user.name, email: user.email, emailAddress: user.emailAddress },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Auth error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -96,7 +98,8 @@ router.get('/me', protect, async (req: AuthRequest, res: Response): Promise<void
     }
     res.json(user);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Auth error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

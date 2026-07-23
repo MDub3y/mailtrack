@@ -14,6 +14,12 @@ router.use(protect);
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+// The %PDF- magic number every real PDF starts with. Multer's fileFilter
+// only sees the client-supplied Content-Type header, which is trivially
+// spoofed (rename any file, claim application/pdf) — this checks the
+// actual bytes written to disk before the upload is accepted.
+const PDF_MAGIC = Buffer.from('%PDF-');
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename:    (_req, _file, cb) => cb(null, `${uuidv4()}.pdf`),
@@ -39,10 +45,29 @@ const uploadMiddleware = (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
+async function isRealPdf(filePath: string): Promise<boolean> {
+  const handle = await fs.promises.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(PDF_MAGIC.length);
+    const { bytesRead } = await handle.read(buf, 0, PDF_MAGIC.length, 0);
+    return bytesRead === PDF_MAGIC.length && buf.equals(PDF_MAGIC);
+  } finally {
+    await handle.close();
+  }
+}
+
 // POST /api/documents/upload
 router.post('/upload', uploadMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.file) { res.status(400).json({ message: 'No file provided' }); return; }
+
+    const filePath = path.join(UPLOADS_DIR, req.file.filename);
+    if (!(await isRealPdf(filePath))) {
+      await fs.promises.unlink(filePath).catch(() => {});
+      res.status(400).json({ message: 'File is not a valid PDF' });
+      return;
+    }
+
     // Sanitize originalname: strip path separators, limit length
     const originalName = path.basename(req.file.originalname).slice(0, 255) || 'document.pdf';
     const doc = await DocModel.create({
@@ -54,7 +79,8 @@ router.post('/upload', uploadMiddleware, async (req: AuthRequest, res: Response)
     });
     res.status(201).json(doc);
   } catch (err) {
-    res.status(500).json({ message: 'Upload error', error: String(err) });
+    console.error('Upload error:', err);
+    res.status(500).json({ message: 'Upload error' });
   }
 });
 
@@ -64,7 +90,8 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     const docs = await DocModel.find({ ownerId: req.userId }).sort({ createdAt: -1 }).lean();
     res.json(docs);
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('List documents error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -90,7 +117,8 @@ router.post('/:id/share', async (req: AuthRequest, res: Response): Promise<void>
       expiresAt:        shareToken.expiresAt,
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Create share error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -107,7 +135,8 @@ router.get('/:id/shares', async (req: AuthRequest, res: Response): Promise<void>
       shareUrl: `${clientUrl}/share/${s.token}`,
     })));
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('List shares error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -119,7 +148,8 @@ router.delete('/:id/shares/:tokenId', async (req: AuthRequest, res: Response): P
     await ShareToken.deleteOne({ _id: req.params.tokenId, documentId: doc._id });
     res.json({ message: 'Share revoked' });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Revoke share error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -135,7 +165,8 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
     await doc.deleteOne();
     res.json({ message: 'Document deleted' });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Delete document error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

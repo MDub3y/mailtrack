@@ -61,7 +61,8 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
     res.status(201).json({ _id: org._id, name: org.name, domain: org.domain, fromEmail: org.fromEmail });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Organization error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -99,7 +100,8 @@ router.post('/join', async (req: AuthRequest, res: Response): Promise<void> => {
 
     res.json({ _id: org._id, name: org.name, domain: org.domain, fromEmail: org.fromEmail });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Organization error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -114,7 +116,8 @@ router.get('/me', async (req: AuthRequest, res: Response): Promise<void> => {
 
     res.json({ _id: org._id, name: org.name, domain: org.domain, fromEmail: org.fromEmail });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
+    console.error('Organization error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 

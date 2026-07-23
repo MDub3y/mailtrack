@@ -73,12 +73,12 @@ Cross-referencing this against how mail providers actually work confirmed the ca
 
 This isn't a bug specific to this codebase. Every pixel-based tracking product — Mailtrack, HubSpot, Yesware — has some rate of exactly this false positive, for exactly this reason, and none of them can eliminate it. The honest engineering goal isn't "100% accurate," which isn't achievable by anyone building on this mechanism; it's minimizing false positives using the one signal the scanner can't hide.
 
-### The fix
+### The fix — and a correction after it broke something else
 
-Since IP and proxy origin can't distinguish a scan from a real open, timing is the signal that's left. `routes/track.ts` now classifies each pixel hit before deciding whether it counts:
+`routes/track.ts` classifies each pixel hit before deciding whether it counts, using the one signal that's actually reliable — the synthetic scanner User-Agent — plus a small timing floor:
 
 ```typescript
-const AUTOMATED_SCAN_GRACE_MS = 60_000;
+const AUTOMATED_SCAN_GRACE_MS = 3_000;
 const SCANNER_UA_PATTERN = /Edge\/12\.246/i;
 
 function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boolean {
@@ -87,9 +87,13 @@ function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boole
 }
 ```
 
-A hit matching the known scanner fingerprint, or arriving within 60 seconds of delivery, is still recorded on the email's event timeline (for transparency and debugging) but does **not** advance `status`, `openCount`, or `firstOpenedAt`. Only what's left after that filter is surfaced to the sender as a real "Opened." The 60-second threshold came directly from the observed data — every confirmed false positive landed well under it — rather than an arbitrary guess.
+A hit matching the known scanner fingerprint, or arriving within 3 seconds of delivery, is still recorded on the email's event timeline (for transparency and debugging) but does **not** advance `status`, `openCount`, or `firstOpenedAt`. Everything else is surfaced to the sender as a real "Opened."
 
-Existing test data that had already been mismarked was reclassified with the same logic, and `EmailDetail.tsx` now shows a small note in the delivery timeline when scans were filtered out, instead of silently discarding them.
+That 3-second figure isn't the number this shipped with initially — the first version used a 60-second window, on the theory that every observed false positive had landed well under it. It did fix the reported false positives, but it introduced a worse problem: a genuine recipient who opens a message quickly (for instance, watching for a test email during a demo — an entirely normal thing to do) fires the pixel within the same few seconds a scanner would, through the identical Gmail image-proxy infrastructure. The 60-second window couldn't tell those two apart, and it silently swallowed a real open, which is a worse failure mode for a read-receipt product than an occasional false positive — a missed real event erodes trust more than a rare, disclosed one.
+
+Timing was never actually a disambiguator on its own; it was standing in for one. The UA fingerprint is the real signal (no legitimate client sends it, at any delay), so the fix was to lean on that and shrink the timing floor down to something that only catches a scan too instantaneous for any human input to explain — not a general-purpose filter. This does reopen some of the original risk: a prescan that doesn't carry the distinctive UA and lands after 3 seconds will still register as an open. That's an accepted, disclosed tradeoff, consistent with the honest framing above — every pixel-tracking product has some rate of this, and there's no version of this mechanism that eliminates it entirely.
+
+Existing data that had been mismarked under both versions of the logic was reclassified each time, and `EmailDetail.tsx` shows a small note in the delivery timeline when scans were filtered out, instead of silently discarding them.
 
 ---
 
