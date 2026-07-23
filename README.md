@@ -56,6 +56,43 @@ Either way, a tracking pixel is injected into the HTML before the message goes o
 
 ---
 
+## Engineering challenge: emails marked "opened" that were never opened
+
+### The problem
+
+During testing, the sender's dashboard was flipping to `opened` on emails that had not been touched by the recipient — sometimes within seconds of being sent. This is the failure mode that matters most for a product built entirely around trustworthy read receipts: an inaccurate "opened" is worse than a missing one, because it actively misleads the sender.
+
+### Discovery and verification
+
+Rather than assume the tracking pixel itself was broken, the actual event data was pulled from MongoDB for the affected messages and checked against the raw HTTP request log (IP, User-Agent, and elapsed time between delivery and the pixel hit). Two things stood out immediately:
+
+- Every false "open" fired within roughly 3–40 seconds of the message being delivered — far too fast for a human to have noticed a notification, opened a mail client, and rendered the message.
+- Some of those hits carried a `User-Agent` of `Chrome/42.0.2311.135 Safari/537.36 Edge/12.246 Mozilla/5.0` — a string that claims to be three different browsers at once. No real browser sends that; it's a synthetic fingerprint.
+
+Cross-referencing this against how mail providers actually work confirmed the cause: Gmail (and every major provider) automatically prefetches and scans images embedded in new mail as part of its own phishing/malware defenses, *before* a human ever opens anything. That prescan is proxied through the same infrastructure (`ggpht.com` / `GoogleImageProxy`) that a genuine, human-triggered image load uses — so at the network level, a security scan and a real open are indistinguishable by design. Google intentionally masks which one triggered the request, for its own users' privacy.
+
+This isn't a bug specific to this codebase. Every pixel-based tracking product — Mailtrack, HubSpot, Yesware — has some rate of exactly this false positive, for exactly this reason, and none of them can eliminate it. The honest engineering goal isn't "100% accurate," which isn't achievable by anyone building on this mechanism; it's minimizing false positives using the one signal the scanner can't hide.
+
+### The fix
+
+Since IP and proxy origin can't distinguish a scan from a real open, timing is the signal that's left. `routes/track.ts` now classifies each pixel hit before deciding whether it counts:
+
+```typescript
+const AUTOMATED_SCAN_GRACE_MS = 60_000;
+const SCANNER_UA_PATTERN = /Edge\/12\.246/i;
+
+function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boolean {
+  if (SCANNER_UA_PATTERN.test(userAgent)) return true;
+  return msSinceCreated < AUTOMATED_SCAN_GRACE_MS;
+}
+```
+
+A hit matching the known scanner fingerprint, or arriving within 60 seconds of delivery, is still recorded on the email's event timeline (for transparency and debugging) but does **not** advance `status`, `openCount`, or `firstOpenedAt`. Only what's left after that filter is surfaced to the sender as a real "Opened." The 60-second threshold came directly from the observed data — every confirmed false positive landed well under it — rather than an arbitrary guess.
+
+Existing test data that had already been mismarked was reclassified with the same logic, and `EmailDetail.tsx` now shows a small note in the delivery timeline when scans were filtered out, instead of silently discarding them.
+
+---
+
 ## Architecture
 
 ```
