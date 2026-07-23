@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface ToastMessage {
   id: number;
   text: string;
-  type: 'success' | 'info';
+  type: 'success' | 'info' | 'error';
 }
 
 interface Props {
@@ -36,9 +36,11 @@ const ToastItem = ({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: nu
   return (
     <div
       className={`pointer-events-auto max-w-sm px-4 py-3 rounded-xl border text-xs font-medium shadow-xl transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        } ${toast.type === 'success'
-          ? 'bg-[#171717] border-neutral-800 text-white'
-          : 'bg-[#ffffff] border-[#eaedf1] text-[#0f172a]'
+        } ${toast.type === 'error'
+          ? 'bg-red-600 border-red-700 text-white'
+          : toast.type === 'success'
+            ? 'bg-[#171717] border-neutral-800 text-white'
+            : 'bg-[#ffffff] border-[#eaedf1] text-[#0f172a]'
         }`}
     >
       {toast.text}

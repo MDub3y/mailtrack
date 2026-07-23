@@ -1,35 +1,23 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Email } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { emailsApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 interface Props {
   email: Email;
   onClose: () => void;
-  onOpened?: (id: string) => void;
 }
 
 const eventLabel: Record<string, { label: string; color: string; }> = {
   sent: { label: 'Sent to MailTrack Engine', color: '#64748b' },
   delivered: { label: 'Delivered to Inbound MX', color: '#16a34a' },
   opened: { label: 'Opened by Recipient', color: '#2563eb' },
+  failed: { label: 'Delivery Failed', color: '#dc2626' },
 };
 
-export const EmailDetail = ({ email, onClose, onOpened }: Props) => {
+export const EmailDetail = ({ email, onClose }: Props) => {
   const { user } = useAuth();
   const overlayRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (user && email.recipientId === user._id && email.status !== 'opened') {
-      emailsApi
-        .markOpened(email._id)
-        .then((res) => {
-          onOpened?.(res.data._id);
-        })
-        .catch(() => { });
-    }
-  }, [email._id, email.recipientId, email.status, user, onOpened]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();

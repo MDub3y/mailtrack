@@ -1,15 +1,19 @@
 import { Router, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 import { protect, AuthRequest } from '../middleware/auth';
 import { Email } from '../models/Email';
 import { User } from '../models/User';
+import type { BulkEmailJob } from '../queues/emailQueue';
 
 const router = Router();
 router.use(protect);
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // POST /api/emails/send
-// Delivers the email internally — no SMTP, no SendGrid.
-// Finds the recipient by their platform emailAddress, stores one document
-// visible to both sender (outbox) and recipient (inbox).
+// Sends a real email to any external address via SendGrid (queued for
+// retry/reliability), with a tracking pixel injected so we know when it's
+// opened. The recipient does NOT need to be a registered platform user.
 router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { to, subject, htmlBody, textBody, attachments } = req.body as {
@@ -22,41 +26,44 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
-    const sender = await User.findById(req.userId);
-    if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
-
-    // Recipient must be a registered user on this platform
-    const recipient = await User.findOne({ emailAddress: to.toLowerCase().trim() });
-    if (!recipient) {
-      res.status(404).json({
-        message: `No user found with address "${to}". They must be registered on this platform.`,
-      });
+    const toAddress = to.toLowerCase().trim();
+    if (!EMAIL_RE.test(toAddress)) {
+      res.status(400).json({ message: `"${to}" is not a valid email address.` });
       return;
     }
 
-    if (recipient._id.toString() === req.userId) {
+    const sender = await User.findById(req.userId);
+    if (!sender) { res.status(404).json({ message: 'Sender not found' }); return; }
+
+    if (toAddress === sender.emailAddress.toLowerCase()) {
       res.status(400).json({ message: 'You cannot send an email to yourself.' });
       return;
     }
 
-    const now = new Date();
+    // Best-effort: if the address happens to belong to a platform user, link
+    // it so the in-app inbox feature keeps working for them.
+    const recipient = await User.findOne({ emailAddress: toAddress });
 
     const email = await Email.create({
       senderId:    sender._id,
-      recipientId: recipient._id,
+      recipientId: recipient?._id,
       from: sender.emailAddress,
-      to:   recipient.emailAddress,
+      to:   toAddress,
       subject,
       htmlBody: htmlBody || '',
       textBody: textBody || '',
       attachments: attachments || [],
-      // Delivered the moment it hits our DB — no SMTP hop needed
-      status: 'delivered',
-      events: [
-        { type: 'sent',      timestamp: now },
-        { type: 'delivered', timestamp: now },
-      ],
+      trackingToken: uuidv4(),
+      status: 'sent',
+      events: [{ type: 'sent', timestamp: new Date() }],
     });
+
+    const { emailQueue } = await import('../queues/emailQueue');
+    await emailQueue.add(
+      'send-single',
+      { emailId: email._id.toString() },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+    );
 
     res.status(201).json(email);
   } catch (err) {
@@ -100,29 +107,6 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
     }).lean();
 
     if (!email) { res.status(404).json({ message: 'Email not found' }); return; }
-    res.json(email);
-  } catch (err) {
-    res.status(500).json({ message: 'Server error', error: String(err) });
-  }
-});
-
-// PATCH /api/emails/:id/open
-// Called by the recipient's client when they open an email.
-// Marks status as 'opened' so the sender's polling picks it up.
-router.patch('/:id/open', async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const email = await Email.findOne({
-      _id: req.params.id,
-      recipientId: req.userId,   // only the actual recipient can mark as opened
-    });
-
-    if (!email) { res.status(404).json({ message: 'Email not found' }); return; }
-    if (email.status === 'opened') { res.json(email); return; } // idempotent
-
-    email.status = 'opened';
-    email.events.push({ type: 'opened', timestamp: new Date() });
-    await email.save();
-
     res.json(email);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: String(err) });
@@ -191,8 +175,9 @@ router.get('/bulk-status/:jobId', async (req: AuthRequest, res: Response): Promi
   try {
     const { emailQueue } = await import('../queues/emailQueue');
     const job = await emailQueue.getJob(req.params.jobId);
-    if (!job) { res.status(404).json({ message: 'Job not found' }); return; }
-    if (job.data.senderId !== req.userId) { res.status(403).json({ message: 'Access denied' }); return; }
+    if (!job || job.name !== 'send-bulk') { res.status(404).json({ message: 'Job not found' }); return; }
+    const bulkData = job.data as BulkEmailJob;
+    if (bulkData.senderId !== req.userId) { res.status(403).json({ message: 'Access denied' }); return; }
 
     const state    = await job.getState();
     const progress = typeof job.progress === 'number' ? job.progress : 0;

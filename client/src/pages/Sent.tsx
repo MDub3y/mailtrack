@@ -6,7 +6,7 @@ import { EmailCompose } from '../components/EmailCompose';
 import { EmailDetail } from '../components/EmailDetail';
 import { Toast, type ToastMessage } from '../components/Toast';
 
-const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2 };
+const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2, failed: 2 };
 
 export const Sent = () => {
   const [emails, setEmails] = useState<Email[]>([]);
@@ -34,9 +34,9 @@ export const Sent = () => {
         const prev = prevStatusRef.current[email._id];
         if (prev && STATUS_RANK[email.status] > STATUS_RANK[prev]) {
           const labels: Record<EmailStatus, string> = {
-            sent: 'Sent', delivered: 'Delivered', opened: 'Opened',
+            sent: 'Sent', delivered: 'Delivered', opened: 'Opened', failed: 'Failed',
           };
-          addToast(`"${email.subject}" — ${labels[email.status]}`, 'success');
+          addToast(`"${email.subject}" — ${labels[email.status]}`, email.status === 'failed' ? 'error' : 'success');
         }
         prevStatusRef.current[email._id] = email.status;
       });
@@ -71,15 +71,6 @@ export const Sent = () => {
   const handleSelect = async (email: Email) => {
     const res = await emailsApi.getById(email._id);
     setSelected(res.data);
-  };
-
-  const handleOpened = (emailId: string) => {
-    setEmails((prev) => prev.map((e) =>
-      e._id === emailId
-        ? { ...e, status: 'opened', events: [...e.events, { type: 'opened', timestamp: new Date().toISOString() }] }
-        : e
-    ));
-    addToast('Email was opened by recipient', 'success');
   };
 
   return (
@@ -119,7 +110,7 @@ export const Sent = () => {
       </div>
 
       {composing && <EmailCompose onSent={handleSent} onClose={() => setComposing(false)} />}
-      {selected && <EmailDetail email={selected} onClose={() => setSelected(null)} onOpened={handleOpened} />}
+      {selected && <EmailDetail email={selected} onClose={() => setSelected(null)} />}
       <Toast toasts={toasts} onRemove={removeToast} />
     </div>
   );

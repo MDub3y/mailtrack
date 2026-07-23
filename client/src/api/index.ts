@@ -34,7 +34,6 @@ export const emailsApi = {
   getSent:  () => api.get<Email[]>('/emails/sent'),
   getInbox: () => api.get<Email[]>('/emails/inbox'),
   getById:  (id: string) => api.get<Email>(`/emails/${id}`),
-  markOpened: (id: string) => api.patch<Email>(`/emails/${id}/open`),
   searchUsers: (q: string) => api.get<PlatformUser[]>(`/emails/users/search?q=${encodeURIComponent(q)}`),
 };
 
