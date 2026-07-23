@@ -8,6 +8,7 @@ import { Inbox } from './pages/Inbox';
 import { Documents } from './pages/Documents';
 import { BulkCompose } from './pages/BulkCompose';
 import { ShareView } from './pages/ShareView';
+import { Landing } from './pages/Landing';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode; }) => {
   const { user, isLoading } = useAuth();
@@ -155,6 +156,7 @@ const AppRoutes = () => (
       element={
         <Shell>
           <Routes>
+            <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route
