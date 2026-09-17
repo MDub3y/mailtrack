@@ -193,8 +193,8 @@ npm run dev            # http://localhost:5173
 ### Environment (server/.env)
 
 ```
-MONGODB_URI=mongodb://localhost:27017/emailservice
-REDIS_URL=redis://localhost:6379
+MONGODB_URI=mongodb://localhost:27018/emailservice   # docker-compose maps Mongo to 27018
+REDIS_URL=redis://localhost:6380                       # and Redis to 6380
 JWT_SECRET=change_this_in_production
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
@@ -202,11 +202,29 @@ GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/google/callback
 BASE_URL=https://your-tunnel-url             # public HTTPS, for the tracking pixel
 PORT=5000
 CLIENT_URL=http://localhost:5173
+
+# AI layer (see doc/). Off by default; nothing under server/src/ai runs without it.
+AI_ENABLED=false
+ANTHROPIC_API_KEY=
+AI_DAILY_TOKENS_DEFAULT=200000
 ```
 
 A note on the Google OAuth client: while it's in Google's "Testing" publishing status, only accounts you've explicitly added as test users (Google Cloud Console → OAuth consent screen → Test users) can connect. Moving to arbitrary users requires submitting the app for Google's verification review — a real external process, not a config change.
 
 Enterprise customers don't need any of the Google setup — they just provide their own SendGrid API key and a domain-authenticated From address via the **Enterprise** page.
+
+---
+
+## AI layer
+
+MailTrack is growing an AI layer, built in phases. Phase 0 is in: every model call goes through one wrapper (`server/src/ai/runAgent.ts`) that checks a per-user daily token ceiling, records a persisted run with a receipt of exactly what the model was shown, streams the call, validates the output against a schema, and refuses to store anything partial. Runs are visible on the **Runs** page. A test (`npm test` in `server/`) fails the build if the tracking-pixel or send paths ever import the AI layer, and the AI layer can never import the send path.
+
+```bash
+cd server
+npm test                       # import boundary + context builder tests, no API key needed
+npm run ai:smoke -- --refuse   # budget-refusal path, no API key needed
+npm run ai:smoke               # one live structured call; needs ANTHROPIC_API_KEY and AI_ENABLED=true
+```
 
 ---
 

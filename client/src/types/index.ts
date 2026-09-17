@@ -75,6 +75,39 @@ export interface ShareTokenInfo {
   shareUrl: string;
 }
 
+export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
+
+export interface ReceiptSection {
+  name: string;
+  tokens: number;
+  itemIds: string[];
+  droppedItemIds: string[];
+  cacheBoundary: boolean;
+}
+
+export interface AgentRun {
+  _id: string;
+  kind: string;
+  modelId: string;
+  effort?: string;
+  status: RunStatus;
+  inputRefs: Record<string, unknown>;
+  receipt: {
+    sections: ReceiptSection[];
+    totalInputTokens: number;
+    exact: boolean;
+    cacheReadTokens: number;
+  };
+  steps?: Array<{ tool: string; input: unknown; outputSummary: string; ms: number; isError?: boolean }>;
+  output?: unknown;
+  usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  costUsd: number;
+  error?: string;
+  refusalCategory?: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+
 export interface BulkJobStatus {
   jobId: string;
   state: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed';

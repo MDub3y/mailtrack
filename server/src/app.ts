@@ -7,6 +7,7 @@ import documentRoutes from './routes/documents';
 import shareRoutes    from './routes/share';
 import trackRoutes    from './routes/track';
 import organizationRoutes from './routes/organizations';
+import aiRoutes        from './routes/ai';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/share',     shareRoutes);
 app.use('/api/track',     trackRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/ai',        aiRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

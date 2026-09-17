@@ -1,10 +1,10 @@
-version: '3.8'
 services:
   mongo:
     image: mongo:7
     container_name: emailservice_mongo
     ports:
-      - '27017:27017'
+      # Host port 27018 so this project can run alongside another MongoDB on 27017.
+      - '27018:27017'
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped
@@ -13,7 +13,8 @@ services:
     image: redis:7-alpine
     container_name: emailservice_redis
     ports:
-      - '6379:6379'
+      # Host port 6380 so this project can run alongside another Redis on 6379.
+      - '6380:6379'
     restart: unless-stopped
 
 volumes:

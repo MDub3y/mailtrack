@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -58,6 +58,12 @@ export const organizationsApi = {
   join: (organizationId: string) =>
     api.post<Organization>('/organizations/join', { organizationId }),
   me: () => api.get<Organization>('/organizations/me'),
+};
+
+export const aiApi = {
+  status: () => api.get<{ enabled: boolean }>('/ai/status'),
+  listRuns: () => api.get<AgentRun[]>('/ai/runs'),
+  getRun: (id: string) => api.get<AgentRun>(`/ai/runs/${id}`),
 };
 
 export const bulkEmailApi = {
