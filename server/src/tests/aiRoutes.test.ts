@@ -78,9 +78,9 @@ test('every AI route requires a token', async () => {
 });
 
 test('status reflects the AI_ENABLED flag', async () => {
-  assert.deepEqual((await call('GET', '/api/ai/status', owner)).json, { enabled: true });
+  assert.equal((await call('GET', '/api/ai/status', owner)).json.enabled, true);
   process.env.AI_ENABLED = 'false';
-  assert.deepEqual((await call('GET', '/api/ai/status', owner)).json, { enabled: false });
+  assert.equal((await call('GET', '/api/ai/status', owner)).json.enabled, false);
 });
 
 test('the run list is scoped to the owner, newest first, without steps or output', async () => {

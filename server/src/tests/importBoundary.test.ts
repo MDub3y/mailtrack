@@ -23,6 +23,7 @@ const FORBIDDEN_PATTERNS = [
   /from\s+['"][^'"]*\/ai['"]/,     // ../ai
   /require\(['"][^'"]*\/ai\//,
   /@anthropic-ai\//,
+  /from\s+['"]openai['"]/,
 ];
 
 // The ai/ module may read models and config, but must never import the code
@@ -62,9 +63,14 @@ test('the AI layer never imports the send path', () => {
   }
 });
 
-test('the SDK is constructed in exactly one place', () => {
+test('provider SDKs are constructed only inside their adapters', () => {
+  const allowed = new Set([
+    path.join('ai', 'providers', 'anthropic.ts'),
+    path.join('ai', 'providers', 'openaiCompat.ts'),
+  ]);
   const offenders = walk(SRC)
-    .filter((f) => !f.endsWith(path.join('ai', 'client.ts')) && !f.includes(`${path.sep}tests${path.sep}`))
-    .filter((f) => /new\s+Anthropic\s*\(/.test(fs.readFileSync(f, 'utf8')));
+    .filter((f) => !f.includes(`${path.sep}tests${path.sep}`))
+    .filter((f) => !allowed.has(path.relative(SRC, f)))
+    .filter((f) => /new\s+(Anthropic|OpenAI)\s*\(/.test(fs.readFileSync(f, 'utf8')));
   assert.deepEqual(offenders.map((f) => path.relative(SRC, f)), []);
 });

@@ -45,7 +45,9 @@ export interface IRunStep {
 export interface IAgentRun extends Document {
   ownerId: mongoose.Types.ObjectId;
   kind: RunKind;
-  modelId: string;
+  provider?: string;       // anthropic | openai | openrouter | custom
+  modelId: string;         // "provider:model" ref, or the task name for refused runs
+  keySource?: string;      // owner | server | none
   effort?: string;
   status: RunStatus;
   inputRefs: {
@@ -59,6 +61,8 @@ export interface IAgentRun extends Document {
   output?: unknown;
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd: number;
+  costSource?: string;     // provider | table | unknown
+  degraded: string[];      // features the adapter had to drop for this model
   error?: string;
   refusalCategory?: string;
   startedAt: Date;
@@ -90,7 +94,9 @@ const StepSchema = new Schema<IRunStep>(
 const AgentRunSchema = new Schema<IAgentRun>({
   ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   kind:    { type: String, enum: RUN_KINDS, required: true },
+  provider: { type: String },
   modelId: { type: String, required: true },
+  keySource: { type: String },
   effort:  { type: String },
   status:  { type: String, enum: ['running', 'succeeded', 'failed', 'refused'], default: 'running' },
   inputRefs: { type: Schema.Types.Mixed, default: {} },
@@ -109,6 +115,8 @@ const AgentRunSchema = new Schema<IAgentRun>({
     cacheWrite: { type: Number, default: 0 },
   },
   costUsd: { type: Number, default: 0 },
+  costSource: { type: String },
+  degraded: { type: [String], default: [] },
   error: { type: String },
   refusalCategory: { type: String },
   startedAt:  { type: Date, default: Date.now },

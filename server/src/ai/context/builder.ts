@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { IContextReceipt, IReceiptSection } from '../../models/AgentRun';
+import type { NeutralMessage, SystemBlock } from '../providers/types';
 
 // Assembles every prompt from named sections with token budgets, in a fixed
 // stable-to-volatile order, and produces the receipt stored on the AgentRun
@@ -7,13 +7,15 @@ import { IContextReceipt, IReceiptSection } from '../../models/AgentRun';
 //
 // The one rule enforced in code rather than by convention: nothing volatile
 // may sit above a cache boundary. Drafting for the same sender repeatedly
-// shares most of its prompt, but only if the prefix is byte-stable.
+// shares most of its prompt, but only if the prefix is byte-stable. Providers
+// with explicit caching get a breakpoint there; providers with automatic
+// prefix caching benefit from the ordering alone.
 
 export type SectionName = 'system' | 'voice' | 'memory' | 'thread' | 'untrusted' | 'task';
 
 const ORDER: SectionName[] = ['system', 'voice', 'memory', 'thread', 'untrusted', 'task'];
 
-// Sections that go into the top-level `system` field; the rest are the user turn.
+// Sections that go into the system prompt; the rest form the user turn.
 const SYSTEM_SECTIONS: ReadonlySet<SectionName> = new Set(['system', 'voice']);
 
 export interface SectionInput {
@@ -35,14 +37,14 @@ export interface BuiltSection extends IReceiptSection {
 }
 
 export interface BuiltContext {
-  system: Anthropic.TextBlockParam[];
-  messages: Anthropic.MessageParam[];
+  system: SystemBlock[];
+  messages: NeutralMessage[];
   sections: BuiltSection[];
   receipt: IContextReceipt;
 }
 
-// Cheap estimate used while packing. The exact count comes from count_tokens
-// on the assembled prompt (see finalize) and replaces this in the receipt.
+// Cheap estimate used while packing. Providers that can count exactly
+// replace it in the receipt (see runAgent).
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -58,47 +60,37 @@ export class ContextBuilder {
     return this;
   }
 
-  // Packs every section under its budget and enforces ordering rules.
-  build(): Omit<BuiltContext, 'receipt'> & { receipt: IContextReceipt } {
+  build(): BuiltContext {
     const ordered = [...this.sections].sort((a, b) => ORDER.indexOf(a.name) - ORDER.indexOf(b.name));
 
     // Rule: a cache boundary may only be placed after a prefix that is stable
     // in its entirety.
-    let seenBoundary = false;
     for (const s of ordered) {
-      if (seenBoundary && s.stable === false) {
-        // Fine — volatile content below the boundary is the whole point.
-        continue;
-      }
-      if (s.cacheBoundary) {
-        const prefix = ordered.slice(0, ordered.indexOf(s) + 1);
-        const unstable = prefix.filter((p) => !p.stable).map((p) => p.name);
-        if (unstable.length) {
-          throw new Error(
-            `ContextBuilder: cache boundary after "${s.name}" but these sections above it are volatile: ${unstable.join(', ')}`
-          );
-        }
-        seenBoundary = true;
+      if (!s.cacheBoundary) continue;
+      const prefix = ordered.slice(0, ordered.indexOf(s) + 1);
+      const unstable = prefix.filter((p) => !p.stable).map((p) => p.name);
+      if (unstable.length) {
+        throw new Error(
+          `ContextBuilder: cache boundary after "${s.name}" but these sections above it are volatile: ${unstable.join(', ')}`
+        );
       }
     }
 
     const built: BuiltSection[] = ordered.map((s) => this.pack(s));
 
-    const system: Anthropic.TextBlockParam[] = [];
+    const system: SystemBlock[] = [];
     const userParts: string[] = [];
     for (const s of built) {
       if (!s.text) continue;
       if (SYSTEM_SECTIONS.has(s.name as SectionName)) {
-        const block: Anthropic.TextBlockParam = { type: 'text', text: s.text };
-        if (s.cacheBoundary) block.cache_control = { type: 'ephemeral' };
-        system.push(block);
+        system.push({ text: s.text, cacheBoundary: s.cacheBoundary });
       } else {
         userParts.push(s.text);
       }
     }
 
-    const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: userParts.join('\n\n') || '(no task content)' },
+    const messages: NeutralMessage[] = [
+      { role: 'user', text: userParts.join('\n\n') || '(no task content)' },
     ];
 
     const receipt: IContextReceipt = {
@@ -123,8 +115,7 @@ export class ContextBuilder {
     };
 
     if (s.text !== undefined) {
-      const text = s.text;
-      return { ...base, text, tokens: estimateTokens(text) };
+      return { ...base, text: s.text, tokens: estimateTokens(s.text) };
     }
 
     const lines: string[] = [];
@@ -139,30 +130,7 @@ export class ContextBuilder {
       base.itemIds.push(item.id);
       used += cost;
     }
-    const text = lines.join('\n');
-    return { ...base, text, tokens: used };
-  }
-}
-
-// Replaces the packing estimate with the exact prompt size. Failure is not
-// fatal: the receipt keeps the estimate and says so.
-export async function measureExact(
-  client: Anthropic,
-  model: string,
-  ctx: { system: Anthropic.TextBlockParam[]; messages: Anthropic.MessageParam[]; receipt: IContextReceipt },
-  tools?: Anthropic.Tool[]
-): Promise<void> {
-  try {
-    const res = await client.messages.countTokens({
-      model,
-      system: ctx.system.length ? ctx.system : undefined,
-      messages: ctx.messages,
-      tools,
-    });
-    ctx.receipt.totalInputTokens = res.input_tokens;
-    ctx.receipt.exact = true;
-  } catch {
-    ctx.receipt.exact = false;
+    return { ...base, text: lines.join('\n'), tokens: used };
   }
 }
 

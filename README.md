@@ -203,9 +203,13 @@ BASE_URL=https://your-tunnel-url             # public HTTPS, for the tracking pi
 PORT=5000
 CLIENT_URL=http://localhost:5173
 
-# AI layer (see doc/). Off by default; nothing under server/src/ai runs without it.
+# AI layer. Off by default; nothing under server/src/ai runs without it. Users bring their own
+# provider keys in the app; server keys are only a local-dev fallback when AI_ALLOW_SERVER_KEYS=true.
 AI_ENABLED=false
-ANTHROPIC_API_KEY=
+AI_KEY_ENCRYPTION_SECRET=change_this_to_a_long_random_string
+AI_ALLOW_SERVER_KEYS=false
+AI_MODEL_PRIMARY=anthropic:claude-opus-5
+AI_MODEL_EXTRACTOR=anthropic:claude-haiku-4-5
 AI_DAILY_TOKENS_DEFAULT=200000
 ```
 
@@ -217,13 +221,14 @@ Enterprise customers don't need any of the Google setup — they just provide th
 
 ## AI layer
 
-MailTrack is growing an AI layer, built in phases. Phase 0 is in: every model call goes through one wrapper (`server/src/ai/runAgent.ts`) that checks a per-user daily token ceiling, records a persisted run with a receipt of exactly what the model was shown, streams the call, validates the output against a schema, and refuses to store anything partial. Runs are visible on the **Runs** page. A test (`npm test` in `server/`) fails the build if the tracking-pixel or send paths ever import the AI layer, and the AI layer can never import the send path.
+MailTrack is growing an AI layer, built in phases, and it is **bring your own key**: each user adds their own Anthropic, OpenAI, or OpenRouter key, or any OpenAI-compatible endpoint (a local Ollama, Groq, a gateway), and picks a model per task as `provider:model` — free models included. Keys are stored encrypted and never returned. Features a model lacks (structured output, tools) are dropped automatically and recorded on the run, so a small model still works and the log says what it could not do. Phase 0 is in: every model call goes through one provider-agnostic wrapper (`server/src/ai/runAgent.ts`) that checks a per-user daily token ceiling, records a persisted run with a receipt of exactly what the model was shown, streams the call, validates the output against a schema, and refuses to store anything partial. Runs are visible on the **Runs** page. A test (`npm test` in `server/`) fails the build if the tracking-pixel or send paths ever import the AI layer, and the AI layer can never import the send path.
 
 ```bash
 cd server
 npm test                       # import boundary + context builder tests, no API key needed
 npm run ai:smoke -- --refuse   # budget-refusal path, no API key needed
-npm run ai:smoke               # one live structured call; needs ANTHROPIC_API_KEY and AI_ENABLED=true
+npm run ai:smoke               # one live structured call with the first user's primary model
+npm run ai:smoke -- --model openrouter:meta-llama/llama-3.3-70b-instruct:free   # any provider:model
 ```
 
 ---

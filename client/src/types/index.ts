@@ -85,10 +85,41 @@ export interface ReceiptSection {
   cacheBoundary: boolean;
 }
 
+export type ProviderName = 'anthropic' | 'openai' | 'openrouter' | 'custom';
+
+export interface AiSettingsView {
+  providers: Record<ProviderName, { configured: boolean; last4?: string; addedAt?: string }>;
+  customBaseUrl: string | null;
+  models: { primary: string | null; extractor: string | null };
+  defaults: { primary: string; extractor: string };
+  serverKeysAllowed: boolean;
+}
+
+export interface AiSettingsUpdate {
+  keys?: Partial<Record<ProviderName, string | null>>;
+  customBaseUrl?: string | null;
+  models?: { primary?: string | null; extractor?: string | null };
+}
+
+export interface AiConnectionTest {
+  ok: boolean;
+  message?: string;
+  runId?: string;
+  provider?: string;
+  model?: string;
+  usage?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  costUsd?: number;
+  degraded?: string[];
+}
+
 export interface AgentRun {
   _id: string;
   kind: string;
+  provider?: string;
   modelId: string;
+  keySource?: string;
+  costSource?: string;
+  degraded?: string[];
   effort?: string;
   status: RunStatus;
   inputRefs: Record<string, unknown>;

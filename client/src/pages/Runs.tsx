@@ -53,7 +53,10 @@ const RunDetail = ({ id, onClose }: { id: string; onClose: () => void }) => {
               <span className="font-mono font-semibold text-[#0f172a]">{run.kind}</span>
               <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${STATUS_STYLES[run.status]}`}>{run.status}</span>
             </div>
-            <div className="text-[#64748b]">{run.modelId}{run.effort ? ` · effort ${run.effort}` : ''} · {formatWhen(run.startedAt)}</div>
+            <div className="text-[#64748b]">{run.modelId}{run.effort ? ` · effort ${run.effort}` : ''}{run.keySource ? ` · ${run.keySource} key` : ''} · {formatWhen(run.startedAt)}</div>
+            {run.degraded && run.degraded.length > 0 && (
+              <div className="mt-1 text-[#92400e]">This model could not use: {run.degraded.join(', ')}. The run fell back to prompt instructions.</div>
+            )}
             {run.error && <div className="mt-1 text-[#991b1b] break-words">{run.error}</div>}
           </section>
 
@@ -124,8 +127,10 @@ const RunDetail = ({ id, onClose }: { id: string; onClose: () => void }) => {
                 </div>
               ))}
               <div className="col-span-2 rounded-lg border border-[#eaedf1] bg-[#ffffff] px-3 py-2 flex justify-between">
-                <span className="text-[#64748b]">estimated cost</span>
-                <span className="font-mono text-[#0f172a]">{formatCost(run.costUsd)}</span>
+                <span className="text-[#64748b]">
+                  {run.costSource === 'provider' ? 'cost (reported by provider)' : run.costSource === 'unknown' ? 'cost (no price known for this model)' : 'estimated cost'}
+                </span>
+                <span className="font-mono text-[#0f172a]">{run.costSource === 'unknown' ? '—' : formatCost(run.costUsd)}</span>
               </div>
             </div>
           </section>

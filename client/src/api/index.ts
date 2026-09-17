@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -61,9 +61,12 @@ export const organizationsApi = {
 };
 
 export const aiApi = {
-  status: () => api.get<{ enabled: boolean }>('/ai/status'),
+  status: () => api.get<{ enabled: boolean; serverKeysAllowed: boolean }>('/ai/status'),
   listRuns: () => api.get<AgentRun[]>('/ai/runs'),
   getRun: (id: string) => api.get<AgentRun>(`/ai/runs/${id}`),
+  getSettings: () => api.get<AiSettingsView>('/ai/settings'),
+  updateSettings: (data: AiSettingsUpdate) => api.put<AiSettingsView>('/ai/settings', data),
+  testConnection: (model?: string) => api.post<AiConnectionTest>('/ai/settings/test', { model }),
 };
 
 export const bulkEmailApi = {

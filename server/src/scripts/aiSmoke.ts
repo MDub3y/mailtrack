@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { connectDB } from '../config/db';
 import { User } from '../models/User';
 import { AgentRun } from '../models/AgentRun';
-import { MODELS } from '../ai/client';
 import { ContextBuilder } from '../ai/context/builder';
 import { runAgent, BudgetExceededError } from '../ai/runAgent';
 
@@ -14,13 +13,21 @@ import { runAgent, BudgetExceededError } from '../ai/runAgent';
 //   2. a ceiling of zero makes the same call refuse with a readable error and
 //      a `refused` run record.
 //
-// Usage:  npm run ai:smoke              (uses the first user in the DB)
-//         npm run ai:smoke -- --refuse  (forces the budget refusal path)
+// Usage:  npm run ai:smoke                                   (task "primary" for the first user)
+//         npm run ai:smoke -- --model openrouter:meta-llama/llama-3.3-70b-instruct:free
+//         npm run ai:smoke -- --refuse                        (forces the budget refusal path)
+// Keys come from the user's AI settings, or from server env when
+// AI_ALLOW_SERVER_KEYS=true.
 
 const Output = z.object({
   greeting: z.string(),
   usedIds: z.array(z.string()),
 });
+
+function arg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
 
 async function main(): Promise<void> {
   await connectDB();
@@ -29,6 +36,7 @@ async function main(): Promise<void> {
 
   const refuse = process.argv.includes('--refuse');
   if (refuse) process.env.AI_DAILY_TOKENS_SMOKE = '0';
+  const model = arg('--model') || 'primary';
 
   const ctx = new ContextBuilder()
     .add({
@@ -62,13 +70,14 @@ async function main(): Promise<void> {
     })
     .build();
 
-  console.log('receipt (estimate):', JSON.stringify(ctx.receipt.sections.map((s) => ({ name: s.name, tokens: s.tokens, dropped: s.droppedItemIds })), null, 0));
+  console.log('model:', model);
+  console.log('receipt (estimate):', JSON.stringify(ctx.receipt.sections.map((s) => ({ name: s.name, tokens: s.tokens, dropped: s.droppedItemIds }))));
 
   try {
     const result = await runAgent({
       kind: 'smoke',
       ownerId: user._id,
-      model: MODELS.primary,
+      model,
       effort: 'low',
       context: ctx,
       outputSchema: Output,
@@ -76,10 +85,11 @@ async function main(): Promise<void> {
       inputRefs: { note: 'ai:smoke' },
       citedIds: (o) => o.usedIds,
     });
-    console.log('run id:', result.runId);
+    console.log('run id:', result.runId, '| provider:', result.provider, '| model:', result.model);
     console.log('output:', result.output);
-    console.log('usage:', result.usage, 'cost USD:', result.costUsd.toFixed(6));
-    console.log('receipt exact:', result.receipt.exact, 'total input tokens:', result.receipt.totalInputTokens);
+    console.log('usage:', result.usage, '| cost USD:', result.costUsd.toFixed(6));
+    console.log('receipt exact:', result.receipt.exact, '| total input tokens:', result.receipt.totalInputTokens);
+    if (result.degraded.length) console.log('degraded features for this model:', result.degraded.join(', '));
   } catch (err) {
     if (err instanceof BudgetExceededError) {
       const refused = await AgentRun.findOne({ ownerId: user._id, kind: 'smoke', status: 'refused' }).sort({ startedAt: -1 });

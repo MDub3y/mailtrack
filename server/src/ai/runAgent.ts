@@ -1,20 +1,23 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { AgentRun, IAgentRun, RunKind } from '../models/AgentRun';
-import { getClient, isAiEnabled, estimateCostUsd, usesAdaptiveThinking, UsageTotals } from './client';
+import { isAiEnabled, ModelTask } from './config';
 import { checkBudget } from './budget';
-import { BuiltContext, measureExact } from './context/builder';
+import { BuiltContext } from './context/builder';
+import { resolveProvider } from './providers';
+import type { CompletionResponse, NeutralMessage, NeutralTool, ToolResult, Effort } from './providers/types';
+import { estimateCost } from './providers/pricing';
 
 // The one wrapper every model call goes through (doc/02-ai-architecture.md,
-// §3.1; ADR-6). Responsibilities, in order:
+// §3.1; ADR-6). Provider-agnostic: it speaks the neutral shape in
+// providers/types.ts and never sees an SDK. Responsibilities, in order:
 //   1. feature flag and daily budget check
-//   2. create the AgentRun record with the context receipt
-//   3. stream the call; loop over read-only tools up to maxSteps
-//   4. validate the output against the schema, then against the receipt
-//   5. finalise usage, cost, status
-// A run that fails validation is a failed run; nothing partial is stored as output.
+//   2. resolve the owner's provider and key (BYOK)
+//   3. create the AgentRun record with the context receipt
+//   4. call; loop over read-only tools up to maxSteps
+//   5. validate the output against the schema, then against the receipt
+//   6. finalise usage, cost, status
+// A run that fails validation is a failed run; nothing partial is stored.
 
 export class AiDisabledError extends Error {
   constructor() { super('AI features are disabled (AI_ENABLED is not "true")'); }
@@ -29,7 +32,7 @@ export class RunFailedError extends Error {
 }
 
 export interface AgentTool {
-  definition: Anthropic.Tool;
+  definition: NeutralTool;
   // Tools are read-only by design. A tool that writes must not exist here.
   execute: (input: unknown) => Promise<string>;
 }
@@ -37,8 +40,10 @@ export interface AgentTool {
 export interface RunSpec<TOut> {
   kind: RunKind;
   ownerId: string | mongoose.Types.ObjectId;
-  model: string;
-  effort?: 'low' | 'medium' | 'high';
+  // A task name resolved through the owner's settings, or an explicit
+  // "provider:model" ref.
+  model: ModelTask | string;
+  effort?: Effort;
   context: BuiltContext;
   outputSchema: z.ZodType<TOut>;
   tools?: AgentTool[];
@@ -52,9 +57,12 @@ export interface RunSpec<TOut> {
 export interface RunResult<TOut> {
   runId: string;
   output: TOut;
-  usage: UsageTotals;
+  usage: IAgentRun['usage'];
   costUsd: number;
   receipt: IAgentRun['receipt'];
+  provider: string;
+  model: string;
+  degraded: string[];
 }
 
 const DEFAULT_MAX_STEPS = 8;
@@ -64,11 +72,16 @@ function summarize(text: string, max = 400): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-function addUsage(total: UsageTotals, u: Anthropic.Usage): void {
-  total.input += u.input_tokens ?? 0;
-  total.output += u.output_tokens ?? 0;
-  total.cacheRead += u.cache_read_input_tokens ?? 0;
-  total.cacheWrite += u.cache_creation_input_tokens ?? 0;
+// Compat models sometimes wrap JSON in fences or prose despite instructions.
+function extractJson(text: string): unknown {
+  const trimmed = text.trim();
+  try { return JSON.parse(trimmed); } catch { /* fall through */ }
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) { try { return JSON.parse(fenced[1]); } catch { /* fall through */ } }
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  if (first >= 0 && last > first) { try { return JSON.parse(trimmed.slice(first, last + 1)); } catch { /* fall through */ } }
+  throw new Error('no JSON object found');
 }
 
 export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOut>> {
@@ -79,7 +92,7 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
     await AgentRun.create({
       ownerId: spec.ownerId,
       kind: spec.kind,
-      modelId: spec.model,
+      modelId: String(spec.model),
       effort: spec.effort,
       status: 'refused',
       inputRefs: spec.inputRefs ?? {},
@@ -90,116 +103,135 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
     throw new BudgetExceededError(spec.kind, budget.spentToday, budget.ceiling);
   }
 
-  const client = getClient();
+  // BYOK: the owner's key and model choice. Throws a readable error when no
+  // key is configured; that is not a run, nothing is recorded.
+  const resolved = await resolveProvider(spec.ownerId, spec.model);
   const toolDefs = spec.tools?.map((t) => t.definition);
-  await measureExact(client, spec.model, spec.context, toolDefs);
+  const maxTokens = spec.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+  const baseRequest = {
+    model: resolved.model,
+    system: spec.context.system,
+    tools: toolDefs,
+    outputSchema: spec.outputSchema,
+    maxTokens,
+    effort: spec.effort,
+  };
+
+  const exact = await resolved.client.countTokens({ ...baseRequest, messages: spec.context.messages });
+  if (exact !== null) {
+    spec.context.receipt.totalInputTokens = exact;
+    spec.context.receipt.exact = true;
+  }
 
   const run = await AgentRun.create({
     ownerId: spec.ownerId,
     kind: spec.kind,
-    modelId: spec.model,
+    provider: resolved.provider,
+    modelId: resolved.ref,
+    keySource: resolved.keySource,
     effort: spec.effort,
     status: 'running',
     inputRefs: spec.inputRefs ?? {},
     receipt: spec.context.receipt,
   });
 
-  const usage: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  const messages: Anthropic.MessageParam[] = [...spec.context.messages];
+  const usage: IAgentRun['usage'] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  let reportedCost = 0;
+  let anyReportedCost = false;
+  const degraded = new Set<string>();
+  const messages: NeutralMessage[] = [...spec.context.messages];
   const toolsByName = new Map((spec.tools ?? []).map((t) => [t.definition.name, t]));
   const maxSteps = spec.maxSteps ?? DEFAULT_MAX_STEPS;
 
-  const fail = async (message: string, extra: Partial<IAgentRun> = {}): Promise<never> => {
+  const finalizeUsage = () => {
+    run.usage = usage;
+    const cost = estimateCost(resolved.ref, usage, anyReportedCost ? reportedCost : undefined);
+    run.costUsd = cost.costUsd;
+    run.costSource = cost.costSource;
+    run.receipt.cacheReadTokens = usage.cacheRead;
+    run.degraded = [...degraded];
+    run.finishedAt = new Date();
+  };
+
+  const fail = async (message: string): Promise<never> => {
     run.status = 'failed';
     run.error = message;
-    run.usage = usage;
-    run.costUsd = estimateCostUsd(spec.model, usage);
-    run.receipt.cacheReadTokens = usage.cacheRead;
-    run.finishedAt = new Date();
-    Object.assign(run, extra);
+    finalizeUsage();
     await run.save();
     throw new RunFailedError(run._id.toString(), message);
   };
 
+  const absorb = (res: CompletionResponse) => {
+    usage.input += res.usage.input;
+    usage.output += res.usage.output;
+    usage.cacheRead += res.usage.cacheRead;
+    usage.cacheWrite += res.usage.cacheWrite;
+    if (typeof res.costUsd === 'number') { reportedCost += res.costUsd; anyReportedCost = true; }
+    for (const d of res.degraded) degraded.add(d);
+  };
+
   try {
     let steps = 0;
-    let final: Anthropic.Message | null = null;
+    let final: CompletionResponse | null = null;
 
     while (true) {
-      const params: Anthropic.MessageStreamParams = {
-        model: spec.model,
-        max_tokens: spec.maxTokens ?? DEFAULT_MAX_TOKENS,
-        system: spec.context.system.length ? spec.context.system : undefined,
-        messages,
-        tools: toolDefs,
-        output_config: {
-          format: zodOutputFormat(spec.outputSchema),
-          ...(spec.effort ? { effort: spec.effort } : {}),
-        },
-        ...(usesAdaptiveThinking(spec.model) ? { thinking: { type: 'adaptive' as const } } : {}),
-      };
+      const res = await resolved.client.complete({ ...baseRequest, messages });
+      absorb(res);
 
-      const message = await client.messages.stream(params).finalMessage();
-      addUsage(usage, message.usage);
-
-      if (message.stop_reason === 'refusal') {
+      if (res.stopReason === 'refusal') {
         run.status = 'refused';
-        run.refusalCategory = message.stop_details?.type === 'refusal' ? message.stop_details.category ?? undefined : undefined;
+        run.refusalCategory = res.refusalCategory;
         run.error = 'model declined the request';
-        run.usage = usage;
-        run.costUsd = estimateCostUsd(spec.model, usage);
-        run.finishedAt = new Date();
+        finalizeUsage();
         await run.save();
         throw new RunFailedError(run._id.toString(), 'model declined the request');
       }
 
-      if (message.stop_reason === 'max_tokens') {
+      if (res.stopReason === 'max_tokens') {
         await fail('output truncated at max_tokens');
       }
 
-      if (message.stop_reason === 'tool_use') {
+      if (res.stopReason === 'tool_use' && res.toolCalls.length) {
         steps += 1;
         if (steps > maxSteps) await fail(`tool loop exceeded ${maxSteps} steps`);
 
-        const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-        messages.push({ role: 'assistant', content: message.content });
+        messages.push({ role: 'assistant', text: res.text || undefined, toolCalls: res.toolCalls, raw: res.raw });
 
-        const results: Anthropic.ToolResultBlockParam[] = [];
-        for (const use of toolUses) {
-          const tool = toolsByName.get(use.name);
+        const results: ToolResult[] = [];
+        for (const call of res.toolCalls) {
+          const tool = toolsByName.get(call.name);
           const started = Date.now();
           let content: string;
           let isError = false;
           if (!tool) {
-            content = `unknown tool: ${use.name}`;
+            content = `unknown tool: ${call.name}`;
             isError = true;
           } else {
             try {
-              content = await tool.execute(use.input);
+              content = await tool.execute(call.input);
             } catch (err) {
               content = `tool error: ${err instanceof Error ? err.message : String(err)}`;
               isError = true;
             }
           }
-          run.steps.push({ tool: use.name, input: use.input, outputSummary: summarize(content), ms: Date.now() - started, isError });
-          results.push({ type: 'tool_result', tool_use_id: use.id, content, is_error: isError || undefined });
+          run.steps.push({ tool: call.name, input: call.input, outputSummary: summarize(content), ms: Date.now() - started, isError });
+          results.push({ id: call.id, content, isError });
         }
-        // All results for one assistant turn go back in a single user message.
-        messages.push({ role: 'user', content: results });
+        // All results for one assistant turn go back together.
+        messages.push({ role: 'tool_results', results });
         await run.save();
         continue;
       }
 
-      final = message;
+      final = res;
       break;
     }
 
-    // Structured output: prefer the SDK's parsed value, fall back to the text.
-    const parsedFromSdk = (final as Anthropic.Message & { parsed_output?: unknown }).parsed_output;
-    const text = final!.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
-    let candidate: unknown = parsedFromSdk;
+    // Structured output: prefer the provider's parsed value, else the text.
+    let candidate: unknown = final!.parsed;
     if (candidate === undefined || candidate === null) {
-      try { candidate = JSON.parse(text); } catch { await fail(`output was not valid JSON: ${summarize(text, 200)}`); }
+      try { candidate = extractJson(final!.text); } catch { await fail(`output was not valid JSON: ${summarize(final!.text, 200)}`); }
     }
     const parsed = spec.outputSchema.safeParse(candidate);
     if (!parsed.success) {
@@ -216,17 +248,24 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
 
     run.status = 'succeeded';
     run.output = output;
-    run.usage = usage;
-    run.costUsd = estimateCostUsd(spec.model, usage);
-    run.receipt.cacheReadTokens = usage.cacheRead;
-    run.finishedAt = new Date();
+    finalizeUsage();
     await run.save();
 
-    return { runId: run._id.toString(), output, usage, costUsd: run.costUsd, receipt: run.receipt };
+    return {
+      runId: run._id.toString(),
+      output,
+      usage,
+      costUsd: run.costUsd,
+      receipt: run.receipt,
+      provider: resolved.provider,
+      model: resolved.ref,
+      degraded: [...degraded],
+    };
   } catch (err) {
     if (err instanceof RunFailedError) throw err;
-    // API or transport errors: record and rethrow with the run id attached.
-    const message = err instanceof Anthropic.APIError ? `API error ${err.status}: ${err.message}` : (err instanceof Error ? err.message : String(err));
+    // Provider or transport errors: record and rethrow with the run id attached.
+    const status = (err as { status?: number }).status;
+    const message = `${status ? `provider error ${status}: ` : ''}${err instanceof Error ? err.message : String(err)}`;
     await fail(message);
     throw err; // unreachable; fail() throws
   }

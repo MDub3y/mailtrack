@@ -50,11 +50,10 @@ test('places the cache breakpoint on the last stable system block', () => {
     .add({ name: 'task', budgetTokens: 50, stable: false, text: 'go' })
     .build();
   assert.equal(ctx.system.length, 2);
-  assert.equal(ctx.system[0].cache_control, undefined);
-  assert.deepEqual(ctx.system[1].cache_control, { type: 'ephemeral' });
+  assert.equal(ctx.system[0].cacheBoundary, false);
+  assert.equal(ctx.system[1].cacheBoundary, true);
   assert.equal(ctx.messages.length, 1);
-  assert.equal(ctx.messages[0].role, 'user');
-  assert.equal(ctx.messages[0].content, 'go');
+  assert.deepEqual(ctx.messages[0], { role: 'user', text: 'go' });
 });
 
 test('the same stable prefix renders byte-identically across builds', () => {
@@ -67,7 +66,7 @@ test('the same stable prefix renders byte-identically across builds', () => {
   const a = build();
   const b = build();
   assert.equal(JSON.stringify(a.system), JSON.stringify(b.system));
-  assert.notEqual(a.messages[0].content, b.messages[0].content);
+  assert.notEqual((a.messages[0] as { text: string }).text, (b.messages[0] as { text: string }).text);
 });
 
 test('wrapUntrusted labels and delimits outside text', () => {
