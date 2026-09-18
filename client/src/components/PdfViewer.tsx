@@ -6,7 +6,14 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-export const PdfViewer = ({ url }: { url: string; }) => {
+// Per-page dwell, measured honestly (doc/02-ai-architecture.md §1.8):
+// only while the tab is visible, first second on a page ignored, and
+// reported on page change and on unmount. The server caps per page.
+const DWELL_IGNORE_FIRST_MS = 1000;
+
+export interface PageDwell { page: number; seconds: number }
+
+export const PdfViewer = ({ url, onDwell }: { url: string; onDwell?: (pages: PageDwell[]) => void }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
@@ -14,6 +21,43 @@ export const PdfViewer = ({ url }: { url: string; }) => {
   const [scale, setScale] = useState(1.3);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const dwellRef = useRef<{ page: number; visibleSince: number | null; accumulated: Map<number, number> }>({ page: 1, visibleSince: null, accumulated: new Map() });
+  const onDwellRef = useRef(onDwell);
+  onDwellRef.current = onDwell;
+
+  useEffect(() => {
+    const d = dwellRef.current;
+    const stopClock = () => {
+      if (d.visibleSince !== null) {
+        const ms = Date.now() - d.visibleSince;
+        if (ms > DWELL_IGNORE_FIRST_MS) d.accumulated.set(d.page, (d.accumulated.get(d.page) ?? 0) + (ms - DWELL_IGNORE_FIRST_MS) / 1000);
+        d.visibleSince = null;
+      }
+    };
+    const startClock = () => { if (document.visibilityState === 'visible' && d.visibleSince === null) d.visibleSince = Date.now(); };
+    const flush = () => {
+      stopClock();
+      const pages = [...d.accumulated.entries()].filter(([, s]) => s >= 1).map(([p, s]) => ({ page: p, seconds: Math.round(s) }));
+      if (pages.length) onDwellRef.current?.(pages);
+      startClock();
+    };
+
+    // Page changed: close the previous page's clock, open this one's.
+    stopClock();
+    d.page = page;
+    startClock();
+    if (d.accumulated.size) flush();
+
+    const onVisibility = () => (document.visibilityState === 'visible' ? startClock() : flush());
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [page]);
 
   useEffect(() => {
     setLoading(true);

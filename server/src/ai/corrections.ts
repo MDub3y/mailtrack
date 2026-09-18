@@ -19,6 +19,19 @@ const KIND_TO_RUN_KIND: Record<ProposalKind, RunKind> = {
   queue_threshold: 'judge', // placeholder until a queue-tuning run kind exists
 };
 
+// Applying a decided proposal is kind-specific (a memory item becomes
+// active, a rule becomes live). Kinds register an applier here so this
+// module never imports the code that owns each kind.
+export type ProposalApplier = (proposal: IProposal, outcome: 'accepted' | 'rejected') => Promise<void>;
+const appliers = new Map<ProposalKind, ProposalApplier>();
+export function registerApplier(kind: ProposalKind, fn: ProposalApplier): void {
+  appliers.set(kind, fn);
+}
+async function apply(proposal: IProposal, outcome: 'accepted' | 'rejected'): Promise<void> {
+  const fn = appliers.get(proposal.kind);
+  if (fn) await fn(proposal, outcome);
+}
+
 export interface NewProposal {
   ownerId: string | mongoose.Types.ObjectId;
   kind: ProposalKind;
@@ -52,7 +65,28 @@ export async function submitProposal(p: NewProposal): Promise<IProposal> {
       confidence: p.confidence,
       labeledBy: 'policy',
     });
+    await apply(proposal, 'accepted');
   }
+  return proposal;
+}
+
+// Some kinds have their own domain policy that may accept immediately
+// regardless of earned trust (e.g. a memory item extracted from the sender's
+// own words with a verified quote). That is a policy decision, recorded as
+// such, and still labelled so acceptance rates stay honest.
+export async function acceptByPolicy(proposalId: mongoose.Types.ObjectId | string, reason: string): Promise<IProposal | null> {
+  const proposal = await Proposal.findById(proposalId);
+  if (!proposal || proposal.status !== 'pending') return proposal;
+  proposal.status = 'auto_accepted';
+  proposal.decidedBy = 'policy';
+  proposal.decidedAt = new Date();
+  proposal.reason = reason;
+  await proposal.save();
+  await Label.create({
+    ownerId: proposal.ownerId, runKind: KIND_TO_RUN_KIND[proposal.kind], runId: proposal.runId, proposalId: proposal._id,
+    verdict: 'accepted', before: proposal.payload, confidence: proposal.confidence, labeledBy: 'policy',
+  });
+  await apply(proposal, 'accepted');
   return proposal;
 }
 
@@ -104,5 +138,6 @@ export async function decideProposal(
     { $set: { [`inputRefs.lastDecision`]: { proposalId: proposal._id, verdict, at: proposal.decidedAt } } }
   ).catch(() => {});
 
+  await apply(proposal, proposal.status === 'accepted' ? 'accepted' : 'rejected');
   return proposal;
 }

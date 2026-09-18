@@ -1,10 +1,11 @@
 import { Queue, Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
-import { Email } from '../models/Email';
+import { Email, IEmail } from '../models/Email';
 import { User } from '../models/User';
-import { injectTrackingPixel } from '../services/emailService';
+import { injectTrackingPixel, renderAttachmentLinks, renderAttachmentText } from '../services/emailService';
 import { dispatchEmail } from '../services/dispatchService';
+import { ensureContact, recordSignal } from '../services/signalService';
 
 export interface BulkEmailJob {
   senderId: string;
@@ -38,22 +39,79 @@ function pixelUrlFor(trackingToken: string): string {
   return `${baseUrl}/api/track/${trackingToken}/pixel.png`;
 }
 
+// The outgoing copy: attachment links (attributed via the tracking token)
+// then the pixel. The stored htmlBody is never changed.
+function outgoingBodies(email: Pick<IEmail, 'htmlBody' | 'textBody' | 'attachments' | 'trackingToken'>): { html: string; text: string } {
+  const attachments = (email.attachments || []).map((a) => ({ name: a.name, shareUrl: a.shareUrl }));
+  const withLinks = renderAttachmentLinks(email.htmlBody, attachments, email.trackingToken);
+  return {
+    html: injectTrackingPixel(withLinks, pixelUrlFor(email.trackingToken)),
+    text: renderAttachmentText(email.textBody, attachments, email.trackingToken),
+  };
+}
+
+// Contact + the `sent` signal. Idempotent on the email id.
+async function attachContact(email: IEmail): Promise<void> {
+  const contact = await ensureContact(email.senderId, email.to);
+  if (!email.contactId) {
+    email.contactId = contact._id;
+    await email.save();
+  }
+  await recordSignal({
+    ownerId: email.senderId, contactId: contact._id, emailId: email._id,
+    type: 'sent', at: email.createdAt, payload: { subject: email.subject },
+    verdict: 'human', source: 'system', dedupeKey: `sent:${email._id}`,
+  });
+}
+
+async function markDelivered(email: IEmail, providerMessageId: string | undefined, opts: { extract: boolean }): Promise<void> {
+  const now = new Date();
+  email.status = 'delivered';
+  email.providerMessageId = providerMessageId;
+  email.events.push({ type: 'delivered', timestamp: now });
+  await email.save();
+  if (email.contactId) {
+    await recordSignal({
+      ownerId: email.senderId, contactId: email.contactId, emailId: email._id,
+      type: 'delivered', at: now, verdict: 'human', source: 'system', dedupeKey: `delivered:${email._id}`,
+    });
+  }
+  // Memory extraction runs off the send path, in its own queue (ai/ never
+  // imports this file; this file only enqueues by name). Bulk sends batch
+  // their extraction into one job at the end instead (ADR-14).
+  if (opts.extract) {
+    const { enqueueExtraction } = await import('./aiQueue');
+    await enqueueExtraction(email._id.toString()).catch((err) => console.error('[EmailQueue] enqueue extraction failed:', err));
+  }
+}
+
+async function markFailed(email: IEmail, reason: string): Promise<void> {
+  const now = new Date();
+  email.status = 'failed';
+  email.failureReason = reason;
+  email.events.push({ type: 'failed', timestamp: now });
+  await email.save();
+  if (email.contactId) {
+    await recordSignal({
+      ownerId: email.senderId, contactId: email.contactId, emailId: email._id,
+      type: 'failed', at: now, payload: { reason }, verdict: 'human', source: 'system', dedupeKey: `failed:${email._id}`,
+    }).catch(() => {});
+  }
+}
+
 async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
   const email = await Email.findById(job.data.emailId);
   if (!email) return;
 
-  const html = injectTrackingPixel(email.htmlBody, pixelUrlFor(email.trackingToken));
+  await attachContact(email);
+  const { html, text } = outgoingBodies(email);
   const { providerMessageId } = await dispatchEmail(email.senderId.toString(), {
     to: email.to,
     subject: email.subject,
     html,
-    text: email.textBody,
+    text,
   });
-
-  email.status = 'delivered';
-  email.providerMessageId = providerMessageId;
-  email.events.push({ type: 'delivered', timestamp: new Date() });
-  await email.save();
+  await markDelivered(email, providerMessageId, { extract: true });
 }
 
 async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult> {
@@ -61,6 +119,7 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
   const now = new Date();
   const result: BulkEmailResult = { sent: 0, failed: 0, errors: [] };
   const selfAddress = senderEmailAddress.toLowerCase().trim();
+  const deliveredIds: string[] = [];
 
   for (let i = 0; i < recipients.length; i++) {
     const addr = recipients[i].toLowerCase().trim();
@@ -76,7 +135,6 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
       // link it so the in-app inbox feature still works for them.
       const recipient = await User.findOne({ emailAddress: addr });
       const trackingToken = uuidv4();
-      const html = injectTrackingPixel(htmlBody, pixelUrlFor(trackingToken));
 
       const email = await Email.create({
         senderId,
@@ -90,21 +148,16 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
         status: 'sent',
         events: [{ type: 'sent', timestamp: now }],
       });
+      await attachContact(email);
+      const { html, text } = outgoingBodies(email);
 
       try {
-        const { providerMessageId } = await dispatchEmail(senderId, {
-          to: addr, subject, html, text: textBody,
-        });
-        email.status = 'delivered';
-        email.providerMessageId = providerMessageId;
-        email.events.push({ type: 'delivered', timestamp: new Date() });
-        await email.save();
+        const { providerMessageId } = await dispatchEmail(senderId, { to: addr, subject, html, text });
+        await markDelivered(email, providerMessageId, { extract: false });
+        deliveredIds.push(email._id.toString());
         result.sent++;
       } catch (sendErr) {
-        email.status = 'failed';
-        email.failureReason = String(sendErr);
-        email.events.push({ type: 'failed', timestamp: new Date() });
-        await email.save();
+        await markFailed(email, String(sendErr));
         result.failed++;
         result.errors.push(`${addr}: ${String(sendErr)}`);
       }
@@ -113,6 +166,12 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
       result.errors.push(`${addr}: ${String(err)}`);
     }
     await job.updateProgress(Math.round(((i + 1) / recipients.length) * 100));
+  }
+
+  // One batched extraction job for the whole bulk send, capped per job.
+  if (deliveredIds.length) {
+    const { enqueueExtractionBatch } = await import("./aiQueue");
+    await enqueueExtractionBatch(deliveredIds).catch((err) => console.error("[EmailQueue] enqueue batch extraction failed:", err));
   }
 
   return result;
@@ -138,11 +197,8 @@ export const startEmailWorker = () => {
       const attempts = job.opts.attempts ?? 1;
       if (job.attemptsMade >= attempts) {
         const { emailId } = job.data as SingleEmailJob;
-        await Email.findByIdAndUpdate(emailId, {
-          status: 'failed',
-          failureReason: err.message,
-          $push: { events: { type: 'failed', timestamp: new Date() } },
-        }).catch(() => {});
+        const email = await Email.findById(emailId).catch(() => null);
+        if (email) await markFailed(email, err.message).catch(() => {});
       }
     }
   });

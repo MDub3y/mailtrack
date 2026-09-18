@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { Email } from '../models/Email';
+import { contactForEmail, recordSignal } from '../services/signalService';
 
 const router = Router();
 
@@ -65,6 +66,23 @@ router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<voi
       }
 
       await email.save();
+
+      // Signal row for the memory layer. Written after the email is saved,
+      // deduped by event index, and never allowed to fail the pixel.
+      const eventIndex = email.events.length - 1;
+      contactForEmail(email)
+        .then((contact) => recordSignal({
+          ownerId: email.senderId,
+          contactId: contact._id,
+          emailId: email._id,
+          type: 'open',
+          at: now,
+          payload: { userAgent, ip, eventIndex, msSinceCreated: now.getTime() - email.createdAt.getTime() },
+          verdict: automated ? 'automated' : 'human',
+          source: 'pixel',
+          dedupeKey: `open:${email._id}:${eventIndex}`,
+        }))
+        .catch((err) => console.error('Tracking signal error:', err));
     }
   } catch (err) {
     console.error('Tracking pixel error:', err);

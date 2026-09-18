@@ -3,6 +3,8 @@ import http from 'http';
 import app from './app';
 import { connectDB } from './config/db';
 import { startEmailWorker } from './queues/emailQueue';
+import { startAiWorker } from './queues/aiQueue';
+import { installMemoryHooks } from './ai/memory';
 
 const PORT = process.env.PORT || 5000;
 
@@ -11,6 +13,8 @@ const server = http.createServer(app);
 connectDB()
   .then(() => {
     startEmailWorker();
+    startAiWorker();
+    installMemoryHooks();
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });

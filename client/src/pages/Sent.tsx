@@ -51,6 +51,19 @@ export const Sent = () => {
 
   useEffect(() => { fetchEmails(); }, [fetchEmails]);
 
+  // Deep link from a contact page or the queue: /sent?email=<id> opens that
+  // email's detail panel once the list has loaded.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('email');
+    if (!id || loading) return;
+    const match = emails.find((e) => e._id === id);
+    if (match) {
+      setSelected(match);
+    } else {
+      emailsApi.getById(id).then((res) => setSelected(res.data)).catch(() => {});
+    }
+  }, [emails, loading]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const gmail = params.get('gmail');

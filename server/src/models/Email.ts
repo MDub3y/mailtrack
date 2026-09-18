@@ -23,6 +23,7 @@ export interface IEmailEvent {
 export interface IEmail extends Document {
   senderId: mongoose.Types.ObjectId;
   recipientId?: mongoose.Types.ObjectId;   // populated only if `to` happens to match a platform User
+  contactId?: mongoose.Types.ObjectId;     // the sender's Contact record for `to` (memory anchor)
   from: string;                            // display name / email of sender
   to: string;                              // real external recipient address
   subject: string;
@@ -54,6 +55,7 @@ const EmailEventSchema = new Schema<IEmailEvent>(
 const EmailSchema = new Schema<IEmail>({
   senderId:    { type: Schema.Types.ObjectId, ref: 'User', required: true },
   recipientId: { type: Schema.Types.ObjectId, ref: 'User' },
+  contactId:   { type: Schema.Types.ObjectId, ref: 'Contact' },
   from:    { type: String, required: true },
   to:      { type: String, required: true },
   subject: { type: String, default: '' },
@@ -80,6 +82,7 @@ const EmailSchema = new Schema<IEmail>({
 
 // Fast lookup for sender's outbox and recipient's inbox
 EmailSchema.index({ senderId:    1, createdAt: -1 });
+EmailSchema.index({ contactId:   1, createdAt: -1 });
 EmailSchema.index({ recipientId: 1, createdAt: -1 });
 
 export const Email = mongoose.model<IEmail>('Email', EmailSchema);

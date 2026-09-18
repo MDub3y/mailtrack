@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -67,6 +67,27 @@ export const aiApi = {
   getSettings: () => api.get<AiSettingsView>('/ai/settings'),
   updateSettings: (data: AiSettingsUpdate) => api.put<AiSettingsView>('/ai/settings', data),
   testConnection: (model?: string) => api.post<AiConnectionTest>('/ai/settings/test', { model }),
+};
+
+export const contactsApi = {
+  list: () => api.get<ContactSummary[]>('/contacts'),
+  get: (id: string) => api.get<ContactDetailView>(`/contacts/${id}`),
+  addMemory: (id: string, data: { kind: 'fact' | 'commitment' | 'preference'; content: string; structured?: Record<string, unknown> }) =>
+    api.post<MemoryItem>(`/contacts/${id}/memory`, data),
+  regenerateBrief: (id: string) => api.post<{ generated: boolean; text?: string; runId?: string; message?: string }>(`/contacts/${id}/brief`, {}),
+};
+
+export const memoryApi = {
+  decide: (id: string, data: { decision: 'accept' | 'reject' | 'edit'; content?: string; structured?: Record<string, unknown> }) =>
+    api.patch<MemoryItem>(`/memory/${id}`, data),
+};
+
+export const queueApi = {
+  list: () => api.get<{ items: QueueItem[]; thresholds: Record<string, number> }>('/queue'),
+  snooze: (rule: QueueRule, ref: { emailId?: string; memoryId?: string }, days = 3) =>
+    api.post(`/queue/${rule}/snooze`, { ...ref, days }),
+  dismiss: (rule: QueueRule, ref: { emailId?: string; memoryId?: string }) =>
+    api.post(`/queue/${rule}/dismiss`, ref),
 };
 
 export const bulkEmailApi = {

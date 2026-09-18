@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { PdfViewer } from '../components/PdfViewer';
+import { PdfViewer, type PageDwell } from '../components/PdfViewer';
 
 const API = 'http://localhost:5000/api';
 
@@ -21,6 +21,10 @@ function formatBytes(bytes: number): string {
 
 export const ShareView = () => {
   const { token } = useParams<{ token: string; }>();
+  // Links in outgoing mail carry ?via=<trackingToken> so the view (and page
+  // dwell) can be attributed to the email and contact it came from.
+  const [searchParams] = useSearchParams();
+  const via = searchParams.get('via') || undefined;
   const [meta, setMeta] = useState<ShareMeta | null>(null);
   const [metaError, setMetaError] = useState('');
   const [password, setPassword] = useState('');
@@ -52,7 +56,7 @@ export const ShareView = () => {
     try {
       const res = await axios.post<{ viewToken: string; documentName: string; }>(
         `${API}/share/${token}/access`,
-        { password: pwd }
+        { password: pwd, via }
       );
       setViewToken(res.data.viewToken);
       setDocumentName(res.data.documentName);
@@ -104,6 +108,15 @@ export const ShareView = () => {
     );
   }
 
+  const reportDwell = (pages: PageDwell[]) => {
+    if (!viewToken) return;
+    const body = JSON.stringify({ vt: viewToken, pages });
+    const url = `${API}/share/${token}/dwell`;
+    // sendBeacon survives tab close; fall back to a keepalive fetch.
+    if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    else fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+  };
+
   if (viewToken) {
     const fileUrl = `${API}/share/${token}/file?vt=${encodeURIComponent(viewToken)}`;
     return (
@@ -117,7 +130,7 @@ export const ShareView = () => {
           </span>
         </header>
         <div className="flex-1 overflow-y-auto">
-          <PdfViewer url={fileUrl} />
+          <PdfViewer url={fileUrl} onDwell={reportDwell} />
         </div>
       </div>
     );

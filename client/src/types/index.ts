@@ -75,6 +75,72 @@ export interface ShareTokenInfo {
   shareUrl: string;
 }
 
+export type MemoryKind = 'fact' | 'commitment' | 'preference' | 'engagement' | 'voice' | 'fingerprint';
+export type MemoryStatus = 'proposed' | 'active' | 'rejected' | 'superseded';
+
+export interface MemoryItem {
+  _id: string;
+  kind: MemoryKind;
+  content: string;
+  structured?: Record<string, unknown>;
+  evidence: Array<{ emailId?: string; signalId?: string; quote?: string }>;
+  confidence: number;
+  source: 'agent' | 'user' | 'system';
+  status: MemoryStatus;
+  createdAt: string;
+  lastConfirmedAt?: string;
+  expiresAt?: string;
+  proposalId?: string;
+  createdByRunId?: string;
+}
+
+export interface ContactBrief {
+  text: string;
+  citedMemoryIds: string[];
+  basedOnSignalCount: number;
+  generatedAt: string;
+  runId: string;
+}
+
+export interface ContactSummary {
+  _id: string;
+  address: string;
+  domain: string;
+  displayName?: string;
+  lastSentAt?: string;
+  lastSignalAt?: string;
+  stats: { sent: number; opened: number; replied: number; docViews: number };
+  memoryCounts: { active: number; proposed: number };
+  briefText?: string;
+}
+
+export interface SignalRow {
+  _id: string;
+  type: string;
+  at: string;
+  emailId?: string;
+  payload: Record<string, unknown>;
+  integrity: { verdict: 'human' | 'automated' | 'unknown' };
+}
+
+export interface ContactDetailView {
+  contact: ContactSummary & { brief?: ContactBrief };
+  memory: MemoryItem[];
+  emails: Array<{ _id: string; subject: string; status: EmailStatus; createdAt: string; openCount: number; firstOpenedAt?: string }>;
+  signals: SignalRow[];
+}
+
+export type QueueRule = 'unopened' | 'opened_no_reply' | 'document_interest' | 'your_commitment_due' | 'their_commitment_due' | 'renewed_interest';
+
+export interface QueueItem {
+  rule: QueueRule;
+  reason: string;
+  contact: { _id: string; address: string; displayName?: string; brief?: string };
+  email?: { _id: string; subject: string; createdAt: string; status: string };
+  memoryId?: string;
+  at: string;
+}
+
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
 
 export interface ReceiptSection {

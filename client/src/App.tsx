@@ -12,6 +12,9 @@ import { Landing } from './pages/Landing';
 import { Organization } from './pages/Organization';
 import { Runs } from './pages/Runs';
 import { AiSettings } from './pages/AiSettings';
+import { Contacts } from './pages/Contacts';
+import { ContactDetail } from './pages/ContactDetail';
+import { Queue } from './pages/Queue';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode; }) => {
   const { user, isLoading } = useAuth();
@@ -132,6 +135,36 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
             </NavLink>
 
             <NavLink
+              to="/queue"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? 'bg-[#ffffff] text-[#0f172a] border border-[#eaedf1] shadow-sm'
+                  : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]'
+                }`
+              }
+            >
+              <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Follow-through
+            </NavLink>
+
+            <NavLink
+              to="/contacts"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? 'bg-[#ffffff] text-[#0f172a] border border-[#eaedf1] shadow-sm'
+                  : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]'
+                }`
+              }
+            >
+              <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              Contacts
+            </NavLink>
+
+            <NavLink
               to="/runs"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
@@ -244,6 +277,30 @@ const AppRoutes = () => (
               element={
                 <ProtectedRoute>
                   <Organization />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/queue"
+              element={
+                <ProtectedRoute>
+                  <Queue />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/contacts"
+              element={
+                <ProtectedRoute>
+                  <Contacts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/contacts/:id"
+              element={
+                <ProtectedRoute>
+                  <ContactDetail />
                 </ProtectedRoute>
               }
             />

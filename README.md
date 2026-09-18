@@ -231,6 +231,15 @@ npm run ai:smoke               # one live structured call with the first user's 
 npm run ai:smoke -- --model openrouter:meta-llama/llama-3.3-70b-instruct:free   # any provider:model
 ```
 
+**Phase 1: memory.** Every observation about a recipient (sent, delivered, open with its scanner verdict, document view, per-page dwell, reply) is one row in a `Signal` collection, tied to a `Contact`. Every sent email is run through an extractor that proposes typed memory items (commitments with owner and due date, facts, preferences); an item is kept only if its quote appears verbatim in the email, goes active on its own when it came from your own words with high confidence, and otherwise waits for you to accept, edit, or reject it. Every decision is stored as a label. A short per-contact brief is written from the active items and cites them by id; a citation that is not in context fails the run and the previous brief stays. Attachment links in outgoing mail now carry `?via=<trackingToken>`, so a document view and its page dwell are attributed to the email and contact they came from; dwell counts only while the tab is visible, skips the first second, and is capped per page. The **Follow-through** page is a set of rules with reasons (unopened, opened repeatedly with no reply, read the document, a promise due either way, back after a quiet spell), with snooze and dismiss. No model decides who to follow up with.
+
+```bash
+cd server
+npm run seed:demo             # five demo contacts with a realistic week of activity; -- --clean removes them
+npm run backfill:contacts     # derive contacts and signals from existing sent email (idempotent)
+npm run eval:extraction       # 15 golden emails: recall, quote validity, noise; needs a provider key
+```
+
 ---
 
 ## Security
