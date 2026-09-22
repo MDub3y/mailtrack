@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { queueApi } from '../api';
-import type { QueueItem, QueueRule } from '../types';
+import { queueApi, aiApi } from '../api';
+import type { QueueItem, QueueRule, DraftResult } from '../types';
+import { EmailCompose, type ComposeInitial } from '../components/EmailCompose';
 
 // Who needs follow-through and why. The reasons are the rules; nothing here
-// is scored or recommended by a model. "Draft follow-up" arrives in Phase 2.
+// is scored or recommended by a model. "Draft follow-up" asks the model for a
+// draft with a receipt and opens it in the compose window; the human sends.
 
 const RULE_LABEL: Record<QueueRule, string> = {
   unopened: 'Not opened',
@@ -30,6 +32,9 @@ export const Queue = () => {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string>('');
+  const [compose, setCompose] = useState<ComposeInitial | null>(null);
 
   const load = useCallback(async () => {
     try { setItems((await queueApi.list()).data.items); }
@@ -39,6 +44,17 @@ export const Queue = () => {
   useEffect(() => { load(); }, [load]);
 
   const keyOf = (i: QueueItem) => `${i.rule}:${i.email?._id ?? ''}:${i.memoryId ?? ''}`;
+  const draft = async (i: QueueItem) => {
+    setDrafting(keyOf(i)); setDraftError('');
+    try {
+      const res = await aiApi.draft({ contactId: i.contact._id, emailId: i.email?._id, rule: i.rule, reason: i.reason });
+      const d: DraftResult = res.data;
+      setCompose({ to: i.contact.address, subject: d.draft.subject, body: d.draft.body, draft: d });
+    } catch (err) {
+      setDraftError((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not draft.');
+    } finally { setDrafting(null); }
+  };
+
   const act = async (i: QueueItem, action: 'snooze' | 'dismiss') => {
     setBusy(keyOf(i));
     try {
@@ -53,6 +69,7 @@ export const Queue = () => {
       <div className="px-8 py-6 border-b border-[#eaedf1]">
         <h1 className="text-lg font-semibold text-[#0f172a]">Follow-through</h1>
         <p className="text-xs text-[#64748b] mt-1">Who needs a nudge and why. Each line is a rule over what happened, not a score.</p>
+        {draftError && <div className="mt-2 text-xs text-[#991b1b]">{draftError}</div>}
       </div>
 
       {loading ? (
@@ -79,7 +96,7 @@ export const Queue = () => {
                   {i.contact.brief && <div className="mt-2 text-[11px] text-[#475569] line-clamp-2">{i.contact.brief}</div>}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button className={btn} disabled title="Drafting arrives in Phase 2">Draft follow-up</button>
+                  <button className={btn} disabled={drafting === keyOf(i)} onClick={() => draft(i)}>{drafting === keyOf(i) ? 'Drafting…' : 'Draft follow-up'}</button>
                   <button className={btn} disabled={busy === keyOf(i)} onClick={() => act(i, 'snooze')}>Snooze 3d</button>
                   <button className={btn} disabled={busy === keyOf(i)} onClick={() => act(i, 'dismiss')}>Dismiss</button>
                 </div>
@@ -87,6 +104,14 @@ export const Queue = () => {
             </li>
           ))}
         </ul>
+      )}
+
+      {compose && (
+        <EmailCompose
+          initial={compose}
+          onSent={() => { setCompose(null); load(); }}
+          onClose={() => setCompose(null)}
+        />
       )}
     </div>
   );

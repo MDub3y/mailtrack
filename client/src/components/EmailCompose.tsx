@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import { emailsApi, documentsApi } from '../api';
-import type { Email, PlatformUser, DocumentAttachment } from '../types';
+import type { Email, PlatformUser, DocumentAttachment, DraftResult } from '../types';
 
 interface FormData {
   to: string;
@@ -9,12 +10,23 @@ interface FormData {
   body: string;
 }
 
+// When opened from "Draft follow-up", the window is prefilled and shows a
+// receipt of exactly what the model used. Sending is the ordinary send;
+// the draft's proposal id rides along so the edit becomes a label.
+export interface ComposeInitial {
+  to: string;
+  subject?: string;
+  body?: string;
+  draft?: DraftResult;
+}
+
 interface Props {
   onSent: (email: Email) => void;
   onClose: () => void;
+  initial?: ComposeInitial;
 }
 
-export const EmailCompose = ({ onSent, onClose }: Props) => {
+export const EmailCompose = ({ onSent, onClose, initial }: Props) => {
   const {
     register,
     handleSubmit,
@@ -22,7 +34,8 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
     watch,
     formState: { isSubmitting },
     reset,
-  } = useForm<FormData>();
+  } = useForm<FormData>({ defaultValues: { to: initial?.to ?? '', subject: initial?.subject ?? '', body: initial?.body ?? '' } });
+  const [showReceipt, setShowReceipt] = useState(true);
   const [suggestions, setSuggestions] = useState<PlatformUser[]>([]);
   const [sendError, setSendError] = useState('');
   const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
@@ -96,6 +109,7 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
         htmlBody: `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.7;color:#1e293b">${data.body.replace(/\n/g, '<br/>')}</div>`,
         textBody: data.body,
         attachments,
+        draftProposalId: initial?.draft?.proposalId,
       });
       onSent(res.data);
       reset();
@@ -116,7 +130,7 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
     >
       <div className="w-full max-w-lg bg-[#ffffff] border border-[#eaedf1] rounded-2xl shadow-2xl overflow-hidden flex flex-col text-left">
         <div className="px-5 py-3.5 border-b border-[#eaedf1] bg-[#f8fafc] flex items-center justify-between">
-          <span className="text-xs font-semibold text-[#0f172a]">New Tracked Message</span>
+          <span className="text-xs font-semibold text-[#0f172a]">{initial?.draft ? 'Drafted follow-up · edit before sending' : 'New Tracked Message'}</span>
           <button onClick={onClose} className="text-xs text-[#94a3b8] hover:text-[#0f172a] cursor-pointer">
             ✕
           </button>
@@ -166,6 +180,49 @@ export const EmailCompose = ({ onSent, onClose }: Props) => {
               className="w-full px-3 py-2 rounded-lg border border-[#eaedf1] text-xs text-[#0f172a] outline-none focus:border-[#0f172a]"
             />
           </div>
+
+          {initial?.draft && (
+            <div className="rounded-lg border border-[#eaedf1] bg-[#f8fafc] text-[11px]">
+              <button type="button" onClick={() => setShowReceipt((v) => !v)} className="w-full px-3 py-2 flex items-center justify-between text-left">
+                <span className="font-semibold text-[#0f172a]">What the model used</span>
+                <span className="text-[#64748b]">
+                  {initial.draft.model}
+                  {initial.draft.receipt.cacheReadTokens > 0 && ` · ${initial.draft.receipt.cacheReadTokens} tok cached`}
+                  {initial.draft.degraded.length > 0 && ` · without ${initial.draft.degraded.join(', ')}`}
+                  {' '}{showReceipt ? '▾' : '▸'}
+                </span>
+              </button>
+              {showReceipt && (
+                <div className="px-3 pb-3 space-y-2">
+                  <div>
+                    <div className="text-[#64748b] mb-1">Memory relied on</div>
+                    {initial.draft.usedMemory.length === 0
+                      ? <div className="text-[#94a3b8]">None. The draft is general.</div>
+                      : <ul className="space-y-0.5">{initial.draft.usedMemory.map((m) => <li key={m.id} className="text-[#0f172a]">{m.text.replace(/^\[[a-f0-9]{24}\]\s*/i, '')}</li>)}</ul>}
+                  </div>
+                  <div>
+                    <div className="text-[#64748b] mb-1">Emails relied on</div>
+                    {initial.draft.usedEmails.length === 0
+                      ? <div className="text-[#94a3b8]">None.</div>
+                      : <ul className="space-y-0.5">{initial.draft.usedEmails.map((e) => <li key={e.id}><Link to={`/sent?email=${e.id}`} className="underline text-[#0f172a]">{e.date} {e.subject}</Link></li>)}</ul>}
+                  </div>
+                  {initial.draft.gaps.length > 0 && (
+                    <div>
+                      <div className="text-[#92400e] mb-1">Before you send</div>
+                      <ul className="space-y-0.5">{initial.draft.gaps.map((g, i) => <li key={i} className="text-[#0f172a]">{g}</li>)}</ul>
+                    </div>
+                  )}
+                  {(() => {
+                    const dropped = initial.draft.receipt.sections.flatMap((s) => s.droppedItemIds);
+                    return dropped.length > 0 ? <div className="text-[#64748b]">{dropped.length} item{dropped.length === 1 ? '' : 's'} left out for space.</div> : null;
+                  })()}
+                  <div className="text-[#64748b]">
+                    {initial.draft.receipt.totalInputTokens} input tokens{initial.draft.receipt.exact ? '' : ' (estimate)'} · <Link to="/runs" className="underline">open run</Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <textarea

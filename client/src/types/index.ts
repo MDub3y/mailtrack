@@ -141,6 +141,25 @@ export interface QueueItem {
   at: string;
 }
 
+export interface DraftResult {
+  draft: { subject: string; body: string; usedMemoryIds: string[]; usedEmailIds: string[]; gaps?: string[] };
+  receipt: { sections: ReceiptSection[]; totalInputTokens: number; exact: boolean; cacheReadTokens: number };
+  runId: string;
+  proposalId: string;
+  provider: string;
+  model: string;
+  degraded: string[];
+  usedMemory: Array<{ id: string; text: string }>;
+  usedEmails: Array<{ id: string; subject: string; date: string }>;
+  gaps: string[];
+}
+
+export interface VoiceView {
+  profile: { _id: string; prose: string; structured?: Record<string, unknown>; source: 'agent' | 'user' | 'system'; createdAt: string; runId?: string } | null;
+  samples: number;
+  minSamples: number;
+}
+
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
 
 export interface ReceiptSection {

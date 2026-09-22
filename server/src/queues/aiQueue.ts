@@ -10,7 +10,8 @@ export type AiJob =
   | { name: 'extract-memory'; data: { emailId: string; direction?: 'outbound' | 'inbound' } }
   | { name: 'extract-memory-batch'; data: { emailIds: string[] } }
   | { name: 'contact-brief'; data: { contactId: string } }
-  | { name: 'recompute-engagement'; data: { contactId: string } };
+  | { name: 'recompute-engagement'; data: { contactId: string } }
+  | { name: 'voice-profile'; data: { ownerId: string } };
 
 type AiJobData = AiJob['data'];
 
@@ -81,6 +82,14 @@ export async function enqueueEngagement(contactId: string): Promise<void> {
   }).catch(() => {});
 }
 
+// At most one profile regeneration in flight per owner.
+export async function enqueueVoiceProfile(ownerId: string): Promise<void> {
+  if (!isAiEnabled() || queueDisabled()) return;
+  await aiQueue().add('voice-profile', { ownerId }, {
+    jobId: `voice:${ownerId}`, attempts: 1, removeOnComplete: true, removeOnFail: 20,
+  }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -105,6 +114,10 @@ export function startAiWorker(): Worker<AiJobData> {
         case 'contact-brief': {
           const { generateBrief } = await import('../ai/memory/brief');
           return generateBrief((job.data as { contactId: string }).contactId);
+        }
+        case 'voice-profile': {
+          const { generateVoiceProfile } = await import('../ai/voice/profile');
+          return generateVoiceProfile((job.data as { ownerId: string }).ownerId);
         }
         case 'recompute-engagement': {
           const { recomputeEngagement } = await import('../ai/memory/engagement');

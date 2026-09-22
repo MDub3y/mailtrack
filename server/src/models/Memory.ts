@@ -52,7 +52,7 @@ const MemorySchema = new Schema<IMemory>({
   scope:      { type: String, enum: ['contact', 'sender', 'global'], required: true },
   subjectId:  { type: Schema.Types.ObjectId, ref: 'Contact' },
   kind:       { type: String, enum: MEMORY_KINDS, required: true },
-  content:    { type: String, required: true, maxlength: 400 },
+  content:    { type: String, required: true, maxlength: 800 }, // one sentence for items; up to a short paragraph for the voice profile
   structured: { type: Schema.Types.Mixed },
   evidence:   { type: [EvidenceSchema], default: [] },
   confidence: { type: Number, min: 0, max: 1, default: 0 },

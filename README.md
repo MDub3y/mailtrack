@@ -242,6 +242,13 @@ npm run eval:extraction       # 15 golden emails: recall, quote validity, noise;
 
 Measured on 2026-09-22 through a Groq key added as a custom endpoint, same prompt, 15 cases: `openai/gpt-oss-120b` found 17 of 19 expected items (89%) with 24 of 26 quotes verbatim (92%); `openai/gpt-oss-20b` found 14 of 19 (74%) with 25 of 25 quotes verbatim. The two quote misses were dropped by the verbatim check rather than stored. One 120b case hit the free tier's rate limit. The default extractor for that user is now the 120b model on the strength of these numbers, which is exactly the decision the eval exists to make.
 
+**Phase 2: drafting.** "Draft follow-up" on the Follow-through page or a contact page asks the model for a follow-up and opens it in the compose window with a receipt: the memory items and emails it relied on, what was left out for space, the gaps it could not fill, tokens, and a link to the run. Every id the draft cites must have been in context or the run fails. The draft is a proposal that is never auto-applied; when you send, the sent text is compared with the draft and the difference is stored as a label. Your voice comes from a profile written from your own sent mail or typed by you on the AI Settings page; your words always win, and it sits above the cache boundary so it is byte-identical across drafts. The extractor also writes a one-line summary per email now, so the thread history in a draft is stable and cheap. A draft eval judges each draft on four checks: every claim traceable, voice respected, the reason addressed in the first two sentences, no instruction leaked from untrusted text. First live run on Groq, three queue items: voice 3/3, no leak 3/3, traceable 2/3, addresses 2/3; the miss led with the overdue quote instead of the document the reason named, which is the kind of thing the eval exists to catch.
+
+```bash
+cd server
+npm run eval:draft -- --limit 3   # draft + judge each queue item; needs a provider key
+```
+
 ---
 
 ## Security

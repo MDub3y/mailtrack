@@ -28,11 +28,31 @@ export interface BulkEmailResult {
 
 type EmailJobData = BulkEmailJob | SingleEmailJob;
 
-const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-});
+// Connection and queue are created on first use so that importing this
+// module (the send route does) never opens a Redis socket by itself.
+let connection: IORedis | null = null;
+let queueInstance: Queue<EmailJobData> | null = null;
 
-export const emailQueue = new Queue<EmailJobData>('bulk-email', { connection });
+function redis(): IORedis {
+  if (!connection) connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', { maxRetriesPerRequest: null });
+  return connection;
+}
+
+export const emailQueue = {
+  add: (...args: Parameters<Queue<EmailJobData>['add']>) => queue().add(...args),
+  getJob: (id: string) => queue().getJob(id),
+};
+
+function queue(): Queue<EmailJobData> {
+  if (!queueInstance) queueInstance = new Queue<EmailJobData>('bulk-email', { connection: redis() });
+  return queueInstance;
+}
+
+// For tests: release the socket so the process can exit.
+export async function closeEmailQueue(): Promise<void> {
+  if (queueInstance) { await queueInstance.close(); queueInstance = null; }
+  if (connection) { connection.disconnect(); connection = null; }
+}
 
 function pixelUrlFor(trackingToken: string): string {
   const baseUrl = (process.env.BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
@@ -186,7 +206,7 @@ export const startEmailWorker = () => {
       }
       return processBulkSend(job as Job<BulkEmailJob>);
     },
-    { connection }
+    { connection: redis() }
   );
 
   worker.on('failed', async (job, err) => {

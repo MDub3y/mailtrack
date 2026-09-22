@@ -18,9 +18,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // opened. The recipient does NOT need to be a registered platform user.
 router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { to, subject, htmlBody, textBody, attachments } = req.body as {
+    const { to, subject, htmlBody, textBody, attachments, draftProposalId } = req.body as {
       to: string; subject: string; htmlBody: string; textBody: string;
       attachments?: Array<{ documentId: string; name: string; shareUrl: string }>;
+      // Set when the compose window was filled by "Draft follow-up": the
+      // sent text is compared with the generated one and the difference
+      // becomes a label (doc/05, Elevation 2). Sending itself is unchanged.
+      draftProposalId?: string;
     };
 
     if (!to || !subject) {
@@ -72,6 +76,23 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
       { emailId: email._id.toString() },
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
     );
+
+    // Correction loop: what the user actually sent vs what was drafted.
+    // Unchanged text is an accept; any edit is stored as a before/after pair.
+    if (draftProposalId && /^[a-f0-9]{24}$/.test(draftProposalId)) {
+      const { Proposal } = await import('../models/Proposal');
+      const { decideProposal } = await import('../ai/corrections');
+      const proposal = await Proposal.findOne({ _id: draftProposalId, ownerId: req.userId, kind: 'draft', status: 'pending' }).lean();
+      if (proposal) {
+        const drafted = proposal.payload as { subject: string; body: string };
+        const sent = { subject, body: textBody || '' };
+        const unchanged = drafted.subject === sent.subject && drafted.body.trim() === sent.body.trim();
+        await decideProposal(draftProposalId, req.userId!, unchanged ? 'accept' : 'edit', {
+          reason: `sent as email ${email._id}`,
+          edited: unchanged ? undefined : { ...drafted, ...sent, sentEmailId: email._id.toString() },
+        }).catch((err) => console.error('draft label error:', err));
+      }
+    }
 
     res.status(201).json(email);
   } catch (err) {

@@ -138,6 +138,64 @@ router.post('/settings/test', async (req: AuthRequest, res: Response): Promise<v
 });
 
 // ---------------------------------------------------------------------------
+// Drafting and voice (Phase 2)
+// ---------------------------------------------------------------------------
+
+const DraftBody = z.object({
+  contactId: z.string().length(24),
+  emailId: z.string().length(24).optional(),
+  rule: z.enum(['unopened', 'opened_no_reply', 'document_interest', 'your_commitment_due', 'their_commitment_due', 'renewed_interest']).optional(),
+  reason: z.string().max(300).optional(),
+});
+
+// POST /api/ai/draft — a follow-up draft with a receipt. Nothing is sent.
+router.post('/draft', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = DraftBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }); return; }
+  try {
+    const { draftFollowUp } = await import('../ai/draft/followUp');
+    const result = await draftFollowUp({ ownerId: req.userId!, ...parsed.data });
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof NoProviderKeyError ? 400 : err instanceof BudgetExceededError ? 429 : err instanceof RunFailedError ? 502 : /not found/i.test(message) ? 404 : 400;
+    res.status(status).json({ message, runId: err instanceof RunFailedError ? err.runId : undefined });
+  }
+});
+
+// GET /api/ai/voice — the active voice profile, if any.
+router.get('/voice', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { getVoiceProfile, MIN_SAMPLES } = await import('../ai/voice/profile');
+  const { Email } = await import('../models/Email');
+  const profile = await getVoiceProfile(req.userId!);
+  const samples = await Email.countDocuments({ senderId: req.userId, direction: { $ne: 'inbound' }, textBody: { $exists: true, $ne: '' } });
+  res.json({ profile: profile ? { _id: profile._id, prose: profile.content, structured: profile.structured, source: profile.source, createdAt: profile.createdAt, runId: profile.createdByRunId } : null, samples, minSamples: MIN_SAMPLES });
+});
+
+// POST /api/ai/voice — regenerate from sent mail.
+router.post('/voice', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { generateVoiceProfile, MIN_SAMPLES } = await import('../ai/voice/profile');
+    const out = await generateVoiceProfile(req.userId!);
+    if (!out) { res.status(400).json({ message: `Need at least ${MIN_SAMPLES} sent emails with text to describe a voice.` }); return; }
+    res.json({ prose: out.memory.content, structured: out.profile, runId: out.runId, status: out.memory.status });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof NoProviderKeyError ? 400 : err instanceof BudgetExceededError ? 429 : err instanceof RunFailedError ? 502 : 400;
+    res.status(status).json({ message });
+  }
+});
+
+// PUT /api/ai/voice { prose } — the user's own words become the profile.
+router.put('/voice', async (req: AuthRequest, res: Response): Promise<void> => {
+  const prose = typeof req.body?.prose === 'string' ? req.body.prose.trim() : '';
+  if (prose.length < 20 || prose.length > 1500) { res.status(400).json({ message: 'prose must be 20–1500 characters' }); return; }
+  const { setVoiceProse } = await import('../ai/voice/profile');
+  const memory = await setVoiceProse(req.userId!, prose);
+  res.json({ prose: memory.content, source: memory.source });
+});
+
+// ---------------------------------------------------------------------------
 // Run log
 // ---------------------------------------------------------------------------
 

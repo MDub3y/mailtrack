@@ -1,7 +1,58 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { aiApi } from '../api';
-import type { AiSettingsView, AiConnectionTest, ProviderName } from '../types';
+import type { AiSettingsView, AiConnectionTest, ProviderName, VoiceView } from '../types';
+
+// The sender's voice: derived from their own sent mail, editable in plain
+// prose, and the stable prefix under every draft.
+const VoiceSection = () => {
+  const [voice, setVoice] = useState<VoiceView | null>(null);
+  const [prose, setProse] = useState('');
+  const [busy, setBusy] = useState<'regen' | 'save' | null>(null);
+  const [msg, setMsg] = useState('');
+
+  const load = async () => {
+    try { const v = (await aiApi.getVoice()).data; setVoice(v); setProse(v.profile?.prose ?? ''); }
+    catch { setMsg('Could not load the voice profile.'); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const regen = async () => {
+    setBusy('regen'); setMsg('');
+    try { const r = (await aiApi.regenerateVoice()).data; setMsg(r.status === 'proposed' ? 'Written, but your own edited profile stays active. Paste the new prose below to use it.' : 'Profile written from your sent mail.'); await load(); }
+    catch (err) { setMsg((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not write a profile.'); }
+    finally { setBusy(null); }
+  };
+  const save = async () => {
+    setBusy('save'); setMsg('');
+    try { await aiApi.setVoice(prose); setMsg('Saved. Drafts will follow your description.'); await load(); }
+    catch (err) { setMsg((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not save.'); }
+    finally { setBusy(null); }
+  };
+
+  const btn = 'px-3 py-1.5 rounded-lg border border-[#eaedf1] bg-[#ffffff] text-xs font-medium text-[#0f172a] hover:bg-[#f1f5f9] disabled:opacity-50';
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-[#0f172a] mb-1">Your voice</h2>
+      <p className="text-[11px] text-[#64748b] mb-3">
+        How drafts should sound. Written from your sent mail, or in your own words below. Your edits always win over a regenerated version.
+        {voice && <> Sent emails available as samples: {voice.samples} (need {voice.minSamples}).</>}
+      </p>
+      <textarea
+        className="w-full h-28 rounded-lg border border-[#eaedf1] bg-[#ffffff] px-3 py-2 text-xs text-[#0f172a] placeholder:text-[#94a3b8] focus:outline-none focus:border-[#F17463] resize-none leading-relaxed"
+        placeholder='e.g. You open with "Hi" and the first name, write short plain sentences, never use exclamation marks, and sign off with "Best, Sam".'
+        value={prose}
+        onChange={(e) => setProse(e.target.value)}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button className={btn} disabled={busy !== null || prose.trim().length < 20} onClick={save}>Save my description</button>
+        <button className={btn} disabled={busy !== null || !voice || voice.samples < voice.minSamples} onClick={regen}>{busy === 'regen' ? 'Writing…' : 'Write it from my sent mail'}</button>
+        {voice?.profile && <span className="text-[11px] text-[#64748b]">current: {voice.profile.source === 'user' ? 'your words' : 'written from sent mail'}</span>}
+        {msg && <span className="text-[11px] text-[#64748b]">{msg}</span>}
+      </div>
+    </section>
+  );
+};
 
 // Bring your own key. Keys are write-only here: the server stores them
 // encrypted and only ever reports "configured" plus the last four characters.
@@ -115,6 +166,8 @@ export const AiSettings = () => {
       </div>
 
       <div className="px-8 py-6 max-w-3xl space-y-8">
+        <VoiceSection />
+
         <section>
           <h2 className="text-sm font-semibold text-[#0f172a] mb-3">Providers</h2>
           <div className="space-y-3">

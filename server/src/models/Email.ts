@@ -38,6 +38,10 @@ export interface IEmail extends Document {
   lastOpenedAt?: Date;
   providerMessageId?: string;
   failureReason?: string;
+  // One line written by the extractor when the email was processed, so the
+  // drafting context can carry a stable, cheap thread history (doc/05, Elevation 5).
+  summary?: string;
+  direction?: 'outbound' | 'inbound';
   createdAt: Date;
 }
 
@@ -77,6 +81,8 @@ const EmailSchema = new Schema<IEmail>({
   lastOpenedAt:      { type: Date },
   providerMessageId: { type: String },
   failureReason:     { type: String },
+  summary:           { type: String, maxlength: 300 },
+  direction:         { type: String, enum: ['outbound', 'inbound'] },
   createdAt: { type: Date, default: Date.now },
 });
 

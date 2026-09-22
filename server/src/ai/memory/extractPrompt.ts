@@ -12,6 +12,7 @@ export const EXTRACTION_SYSTEM = [
   'For every item, `quote` must be a verbatim span copied from the email that supports it — not paraphrased. Items whose quote is not found verbatim are discarded, so copy exactly.',
   'If an item replaces an existing active item, put that item\'s content in `supersedes`.',
   'Do not extract greetings, sign-offs, pleasantries, questions, or anything already in the active memory unless it changed.',
+  'Also return `summary`: one neutral sentence (under 200 characters) saying what this email said or asked, for a thread history. No judgement, no ids.',
   'Return an empty items list when nothing qualifies.',
 ].join('\n');
 

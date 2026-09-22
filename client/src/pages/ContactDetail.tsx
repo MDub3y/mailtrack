@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { contactsApi, memoryApi } from '../api';
+import { contactsApi, memoryApi, aiApi } from '../api';
 import type { ContactDetailView, MemoryItem, MemoryKind } from '../types';
+import { EmailCompose, type ComposeInitial } from '../components/EmailCompose';
 
 // One contact: the brief, every memory item with where it came from, the
 // emails sent, and the human-verdict timeline. Items can be accepted,
@@ -81,6 +82,20 @@ export const ContactDetail = () => {
   const [newText, setNewText] = useState('');
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefMsg, setBriefMsg] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftMsg, setDraftMsg] = useState('');
+  const [compose, setCompose] = useState<ComposeInitial | null>(null);
+
+  const draft = async () => {
+    if (!id || !view) return;
+    setDrafting(true); setDraftMsg('');
+    try {
+      const res = await aiApi.draft({ contactId: id, emailId: view.emails[0]?._id, reason: 'the sender wants to check in' });
+      setCompose({ to: view.contact.address, subject: res.data.draft.subject, body: res.data.draft.body, draft: res.data });
+    } catch (err) {
+      setDraftMsg((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not draft.');
+    } finally { setDrafting(false); }
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -122,10 +137,16 @@ export const ContactDetail = () => {
           <Link to="/contacts" className="text-[11px] text-[#64748b] hover:text-[#0f172a]">← Contacts</Link>
           <h1 className="text-lg font-semibold text-[#0f172a] mt-1">{contact.displayName ?? contact.address}</h1>
           {contact.displayName && <div className="text-xs text-[#64748b]">{contact.address}</div>}
-          <div className="mt-2 flex gap-4 text-[11px] text-[#64748b]">
+          <div className="mt-2 flex items-center gap-4 text-[11px] text-[#64748b]">
             <span>{contact.stats.sent} sent</span><span>{contact.stats.opened} opens</span><span>{contact.stats.replied} replies</span><span>{contact.stats.docViews} document views</span>
+            <button className={btn} disabled={drafting} onClick={draft}>{drafting ? 'Drafting…' : 'Draft follow-up'}</button>
+            {draftMsg && <span className="text-[#991b1b]">{draftMsg}</span>}
           </div>
         </div>
+
+        {compose && (
+          <EmailCompose initial={compose} onSent={() => { setCompose(null); load(); }} onClose={() => setCompose(null)} />
+        )}
 
         <div className="px-8 py-6 space-y-8 max-w-3xl">
           <section>

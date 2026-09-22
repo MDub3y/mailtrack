@@ -1,7 +1,22 @@
 import { onSignal } from '../../services/signalService';
 import { Contact } from '../../models/Contact';
-import { enqueueBrief, enqueueEngagement } from '../../queues/aiQueue';
+import { Email } from '../../models/Email';
+import { Memory } from '../../models/Memory';
+import { enqueueBrief, enqueueEngagement, enqueueVoiceProfile } from '../../queues/aiQueue';
 import './policy'; // registers the memory_item applier
+
+// The voice profile refreshes itself once enough new sent mail has
+// accumulated since the last one (doc/03 Phase 2: "nightly if ≥ 10 new").
+// Event-triggered rather than nightly, like the brief (ADR-7).
+const VOICE_REFRESH_AFTER_SENDS = Number(process.env.AI_VOICE_REFRESH_AFTER_SENDS || 10);
+
+async function maybeRefreshVoice(ownerId: string): Promise<void> {
+  const current = await Memory.findOne({ ownerId, scope: 'sender', kind: 'voice', status: 'active' }).select('createdAt source').lean();
+  if (current?.source === 'user') return; // the user wrote it; leave it alone
+  const since = current?.createdAt ?? new Date(0);
+  const newSends = await Email.countDocuments({ senderId: ownerId, direction: { $ne: 'inbound' }, createdAt: { $gt: since } });
+  if (newSends >= VOICE_REFRESH_AFTER_SENDS) await enqueueVoiceProfile(ownerId);
+}
 
 // Reactions to signals (doc/02-ai-architecture.md §1.7): engagement is
 // recomputed deterministically on every signal; the brief is marked dirty
@@ -15,6 +30,7 @@ export function installMemoryHooks(): void {
   onSignal(async (signal, isNew) => {
     const contactId = signal.contactId.toString();
     await enqueueEngagement(contactId);
+    if (signal.type === 'sent' && isNew) await maybeRefreshVoice(signal.ownerId.toString()).catch(() => {});
 
     if (signal.integrity.verdict === 'automated') return;
 

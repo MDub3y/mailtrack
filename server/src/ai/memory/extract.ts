@@ -20,6 +20,9 @@ export const ExtractionOutput = z.object({
     confidence: z.number().min(0).max(1),
     supersedes: z.string().optional(),
   })),
+  // One neutral sentence about what this email said, stored on the email
+  // for the drafting thread context. No ids, no judgement.
+  summary: z.string().max(240).optional(),
 });
 export type ExtractionOutputT = z.infer<typeof ExtractionOutput>;
 
@@ -90,6 +93,11 @@ export async function extractMemoryForEmail(emailId: string, direction: 'outboun
     maxTokens: 4000,
     inputRefs: { emailIds: [email._id.toString()], contactId: contactId.toString() },
   });
+
+  if (result.output.summary) {
+    email.summary = result.output.summary.trim();
+    await email.save();
+  }
 
   const kept: ExtractedItem[] = [];
   let droppedForQuote = 0;

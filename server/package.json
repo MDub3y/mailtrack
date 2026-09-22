@@ -10,7 +10,8 @@
     "ai:smoke": "ts-node src/scripts/aiSmoke.ts",
     "backfill:contacts": "ts-node src/scripts/backfillContacts.ts",
     "seed:demo": "ts-node src/scripts/seedDemo.ts",
-    "eval:extraction": "ts-node src/ai/evals/extraction.ts"
+    "eval:extraction": "ts-node src/ai/evals/extraction.ts",
+    "eval:draft": "ts-node src/ai/evals/draft.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",

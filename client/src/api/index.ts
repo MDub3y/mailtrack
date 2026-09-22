@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -31,7 +31,7 @@ export const authApi = {
 };
 
 export const emailsApi = {
-  send: (data: { to: string; subject: string; htmlBody: string; textBody: string; attachments?: DocumentAttachment[] }) =>
+  send: (data: { to: string; subject: string; htmlBody: string; textBody: string; attachments?: DocumentAttachment[]; draftProposalId?: string }) =>
     api.post<Email>('/emails/send', data),
   getSent:  () => api.get<Email[]>('/emails/sent'),
   getInbox: () => api.get<Email[]>('/emails/inbox'),
@@ -67,6 +67,10 @@ export const aiApi = {
   getSettings: () => api.get<AiSettingsView>('/ai/settings'),
   updateSettings: (data: AiSettingsUpdate) => api.put<AiSettingsView>('/ai/settings', data),
   testConnection: (model?: string) => api.post<AiConnectionTest>('/ai/settings/test', { model }),
+  draft: (data: { contactId: string; emailId?: string; rule?: QueueRule; reason?: string }) => api.post<DraftResult>('/ai/draft', data),
+  getVoice: () => api.get<VoiceView>('/ai/voice'),
+  regenerateVoice: () => api.post<{ prose: string; runId: string; status: string }>('/ai/voice', {}),
+  setVoice: (prose: string) => api.put<{ prose: string; source: string }>('/ai/voice', { prose }),
 };
 
 export const contactsApi = {
