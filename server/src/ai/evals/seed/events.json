@@ -1,0 +1,19 @@
+{
+  "note": "Seed labels for the classifier eval, derived from the open-tracking investigation in the root README. Addresses and ids removed. Each row is one pixel hit: the User-Agent, the elapsed ms between delivery and the hit, and the human verdict. The two 'automated' rows without the distinctive scanner UA are the known residual: prescans that arrive through the same proxy as a real open, later than the timing floor, with nothing to tell them apart.",
+  "events": [
+    { "id": "seed-01", "userAgent": "Chrome/42.0.2311.135 Safari/537.36 Edge/12.246 Mozilla/5.0", "msSinceCreated": 3400, "label": "automated" },
+    { "id": "seed-02", "userAgent": "Chrome/42.0.2311.135 Safari/537.36 Edge/12.246 Mozilla/5.0", "msSinceCreated": 12100, "label": "automated" },
+    { "id": "seed-03", "userAgent": "Chrome/42.0.2311.135 Safari/537.36 Edge/12.246 Mozilla/5.0", "msSinceCreated": 39800, "label": "automated" },
+    { "id": "seed-04", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 900, "label": "automated" },
+    { "id": "seed-05", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 2100, "label": "automated" },
+    { "id": "seed-06", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 21000, "label": "automated" },
+    { "id": "seed-07", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 48000, "label": "automated" },
+    { "id": "seed-08", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 5200, "label": "human" },
+    { "id": "seed-09", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 8700, "label": "human" },
+    { "id": "seed-10", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 7320000, "label": "human" },
+    { "id": "seed-11", "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1", "msSinceCreated": 184000, "label": "human" },
+    { "id": "seed-12", "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15", "msSinceCreated": 93600000, "label": "human" },
+    { "id": "seed-13", "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 (via ggpht.com GoogleImageProxy)", "msSinceCreated": 2600000, "label": "human" },
+    { "id": "seed-14", "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36", "msSinceCreated": 42000, "label": "human" }
+  ]
+}

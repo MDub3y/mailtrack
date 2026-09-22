@@ -50,6 +50,10 @@ export interface CompletionRequest {
   system: SystemBlock[];
   messages: NeutralMessage[];
   tools?: NeutralTool[];
+  // 'none' keeps the tool definitions in the request (so earlier tool calls
+  // in the history stay valid) but forbids new calls: used for the wrap-up
+  // turn when a loop's step budget is spent.
+  toolChoice?: 'auto' | 'none';
   outputSchema?: z.ZodType;
   maxTokens: number;
   effort?: Effort;

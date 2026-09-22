@@ -11,7 +11,9 @@ export type AiJob =
   | { name: 'extract-memory-batch'; data: { emailIds: string[] } }
   | { name: 'contact-brief'; data: { contactId: string } }
   | { name: 'recompute-engagement'; data: { contactId: string } }
-  | { name: 'voice-profile'; data: { ownerId: string } };
+  | { name: 'voice-profile'; data: { ownerId: string } }
+  | { name: 'investigate'; data: { ownerId: string } }
+  | { name: 'reclassify'; data: { ownerId?: string } };
 
 type AiJobData = AiJob['data'];
 
@@ -90,6 +92,19 @@ export async function enqueueVoiceProfile(ownerId: string): Promise<void> {
   }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
 }
 
+// Accepting a fingerprint rule reclassifies history in the background.
+export async function enqueueReclassify(ownerId?: string): Promise<void> {
+  if (queueDisabled()) return;
+  const scope = ownerId ?? 'all';
+  await aiQueue().add('reclassify', { ownerId }, { jobId: `reclassify:${scope}:${Math.floor(Date.now() / 10_000)}`, attempts: 1, removeOnComplete: true, removeOnFail: 20 }).catch(() => {});
+}
+
+export async function enqueueInvestigate(ownerId: string): Promise<void> {
+  if (!isAiEnabled() || queueDisabled()) return;
+  await aiQueue().add('investigate', { ownerId }, { jobId: `investigate:${ownerId}`, attempts: 1, removeOnComplete: true, removeOnFail: 20 })
+    .catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -118,6 +133,14 @@ export function startAiWorker(): Worker<AiJobData> {
         case 'voice-profile': {
           const { generateVoiceProfile } = await import('../ai/voice/profile');
           return generateVoiceProfile((job.data as { ownerId: string }).ownerId);
+        }
+        case 'investigate': {
+          const { investigate } = await import('../ai/investigate/investigator');
+          return investigate((job.data as { ownerId: string }).ownerId);
+        }
+        case 'reclassify': {
+          const { reclassifyOpens } = await import('../services/classifierService');
+          return reclassifyOpens({ ownerId: (job.data as { ownerId?: string }).ownerId });
         }
         case 'recompute-engagement': {
           const { recomputeEngagement } = await import('../ai/memory/engagement');

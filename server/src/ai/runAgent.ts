@@ -68,6 +68,26 @@ export interface RunResult<TOut> {
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_MAX_TOKENS = 16_000;
 
+// Context editing for tool loops (doc/05 Elevation 5): the last few tool
+// results stay in full; older ones are cut to a stub so the conversation
+// stops growing with every step. The run record keeps every full result.
+const KEEP_FULL_TOOL_RESULTS = 3;
+const STUB_TOOL_RESULT_CHARS = 240;
+
+export function editContext(messages: NeutralMessage[], keepFull = KEEP_FULL_TOOL_RESULTS, stubChars = STUB_TOOL_RESULT_CHARS): NeutralMessage[] {
+  const resultTurns = messages.map((m, i) => (m.role === 'tool_results' ? i : -1)).filter((i) => i >= 0);
+  const cutoff = resultTurns.length > keepFull ? resultTurns[resultTurns.length - keepFull] : -1;
+  return messages.map((m, i) => {
+    if (m.role !== 'tool_results' || i >= cutoff) return m;
+    return {
+      role: 'tool_results',
+      results: m.results.map((r) => (r.content.length > stubChars
+        ? { ...r, content: `${r.content.slice(0, stubChars)}… [earlier result trimmed; ${r.content.length} chars in full on the run record]` }
+        : r)),
+    };
+  });
+}
+
 function summarize(text: string, max = 400): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
@@ -113,6 +133,7 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
     model: resolved.model,
     system: spec.context.system,
     tools: toolDefs,
+    toolChoice: undefined as 'auto' | 'none' | undefined,
     outputSchema: spec.outputSchema,
     maxTokens,
     effort: spec.effort,
@@ -173,10 +194,11 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
 
   try {
     let steps = 0;
+    let wrappedUp = false;
     let final: CompletionResponse | null = null;
 
     while (true) {
-      const res = await resolved.client.complete({ ...baseRequest, messages });
+      const res = await resolved.client.complete({ ...baseRequest, messages: editContext(messages) });
       absorb(res);
 
       if (res.stopReason === 'refusal') {
@@ -194,7 +216,20 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
 
       if (res.stopReason === 'tool_use' && res.toolCalls.length) {
         steps += 1;
-        if (steps > maxSteps) await fail(`tool loop exceeded ${maxSteps} steps`);
+        if (steps > maxSteps) {
+          // Budget spent. One wrap-up turn with the tools withdrawn and a
+          // plain instruction to answer from what it has; only if it still
+          // insists on tools is the run failed.
+          if (wrappedUp) await fail(`tool loop exceeded ${maxSteps} steps`);
+          wrappedUp = true;
+          messages.push({ role: 'assistant', text: res.text || undefined, toolCalls: res.toolCalls, raw: res.raw });
+          messages.push({ role: 'tool_results', results: res.toolCalls.map((c) => ({ id: c.id, content: 'Tool budget exhausted. No more tool calls are available; produce your final answer now from what you already have.', isError: true })) });
+          run.steps.push({ tool: '(budget)', input: { requested: res.toolCalls.map((c) => c.name) }, outputSummary: `step budget of ${maxSteps} reached; asked for a final answer with tool calls disabled`, ms: 0, isError: true });
+          // Definitions stay (the history references them); new calls are forbidden.
+          baseRequest.toolChoice = 'none';
+          await run.save();
+          continue;
+        }
 
         messages.push({ role: 'assistant', text: res.text || undefined, toolCalls: res.toolCalls, raw: res.raw });
 

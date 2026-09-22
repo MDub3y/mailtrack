@@ -160,6 +160,46 @@ export interface VoiceView {
   minSamples: number;
 }
 
+export interface FingerprintRuleView {
+  _id: string;
+  patternType: 'ua_regex' | 'ip_cidr' | 'timing_floor_ms';
+  pattern: string;
+  verdict: 'automated' | 'human';
+  status: 'proposed' | 'active' | 'retired' | 'rejected';
+  confidence: number;
+  reasoning?: string;
+  evidence: Array<{ signalId: string }>;
+  predictedEffect?: { wouldReclassify: number; matchesLabelled: { agree: number; disagree: number }; modelDisagreed?: boolean; modelReported?: { wouldReclassify: number; matchesLabelled: { agree: number; disagree: number } } };
+  proposedByRunId?: string;
+  proposalId?: string;
+  reviewNote?: string;
+  measured?: { precision: number; recall: number; n: number; at: string };
+  origin: 'seed' | 'investigator' | 'user';
+  createdAt: string;
+}
+
+export interface IntegrityView {
+  metrics: {
+    n: number; truePositive: number; falsePositive: number; falseNegative: number; trueNegative: number;
+    precision: number; recall: number; humanRecall: number;
+    misses: Array<{ id: string; label: string; predicted: string; userAgent: string; msSinceCreated: number }>;
+  };
+  seedHeuristics: Array<{ patternType: string; pattern: string; verdict: string; reasoning?: string }>;
+  rules: { active: FingerprintRuleView[]; proposed: FingerprintRuleView[]; rejected: FingerprintRuleView[] };
+  volume30d: Record<string, number>;
+}
+
+export interface OpenSignalRow {
+  _id: string;
+  at: string;
+  verdict: 'human' | 'automated' | 'unknown';
+  label: 'human' | 'automated' | null;
+  userAgent?: string;
+  msSinceCreated?: number;
+  matchedBy: string | null;
+  eventIndex?: number;
+}
+
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
 
 export interface ReceiptSection {

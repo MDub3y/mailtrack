@@ -6,7 +6,7 @@ import { connectTestDb, resetTestDb, disconnectTestDb } from './helpers/db';
 import { fakeProvider } from './helpers/fakeProvider';
 import { __setProviderForTests } from '../ai/providers';
 import { ContextBuilder } from '../ai/context/builder';
-import { runAgent, AiDisabledError, BudgetExceededError, RunFailedError, AgentTool } from '../ai/runAgent';
+import { runAgent, editContext, AiDisabledError, BudgetExceededError, RunFailedError, AgentTool } from '../ai/runAgent';
 import { AgentRun } from '../models/AgentRun';
 import { AiSettings } from '../models/AiSettings';
 
@@ -206,23 +206,63 @@ test('a tool loop records each step and returns all results together', async () 
   assert.deepEqual(fake.requests[0].tools?.map((t) => t.name), ['get_email']);
 });
 
-test('a tool loop that exceeds the step cap fails the run', async () => {
+test('a tool loop that exceeds the step cap gets one wrap-up turn without tools, then fails if it still wants tools', async () => {
   const loop = { toolCalls: [{ id: 'tu', name: 'noop', input: {} }] };
-  const fake = fakeProvider([loop, loop, loop, loop]);
-  __setProviderForTests(fake);
   const noop: AgentTool = {
     definition: { name: 'noop', description: 'does nothing', inputSchema: { type: 'object', properties: {} } },
     execute: async () => 'ok',
   };
+
+  // Insists on tools even after the budget notice → failed run.
+  const stubborn = fakeProvider([loop, loop, loop, loop, loop]);
+  __setProviderForTests(stubborn);
   await assert.rejects(
     runAgent({ ...base, kind: 'investigate', context: draftingContext(), tools: [noop], maxSteps: 2 }),
     (err: unknown) => err instanceof RunFailedError && /exceeded 2 steps/.test(err.message)
   );
-  const run = await AgentRun.findOne({ kind: 'investigate' }).lean();
+  let run = await AgentRun.findOne({ kind: 'investigate' }).lean();
   assert.equal(run!.status, 'failed');
-  assert.equal(run!.steps.length, 2);
+  assert.deepEqual(run!.steps.map((s) => s.tool), ['noop', 'noop', '(budget)']);
   assert.equal(run!.output, undefined);
-  assert.equal(fake.requests.length, 3);
+  assert.equal(stubborn.requests.length, 4);
+  assert.equal(stubborn.requests[3].toolChoice, 'none');          // the wrap-up request forbids new tool calls…
+  assert.equal(stubborn.requests[3].tools?.length, 1);            // …but keeps the definitions the history refers to
+  assert.equal(stubborn.requests[2].toolChoice, undefined);
+  const notice = (stubborn.requests[3].messages.at(-1) as { results: Array<{ content: string; isError?: boolean }> }).results[0];
+  assert.match(notice.content, /Tool budget exhausted/);
+  assert.equal(notice.isError, true);
+
+  // Answers on the wrap-up turn → succeeded, with the budget step recorded.
+  await AgentRun.deleteMany({});
+  const sensible = fakeProvider([loop, loop, loop, { json: { subject: 's', body: 'A body that is long enough to pass the schema minimum.', usedMemoryIds: [] } }]);
+  __setProviderForTests(sensible);
+  const result = await runAgent({ ...base, kind: 'investigate', context: draftingContext(), tools: [noop], maxSteps: 2 });
+  assert.equal(result.output.subject, 's');
+  run = await AgentRun.findById(result.runId).lean();
+  assert.equal(run!.status, 'succeeded');
+  assert.deepEqual(run!.steps.map((s) => s.tool), ['noop', 'noop', '(budget)']);
+});
+
+test('context editing: older tool results are stubbed in the request, kept in full on the run record', async () => {
+  const big = 'x'.repeat(1000);
+  const turns = Array.from({ length: 5 }, (_, i) => ({ toolCalls: [{ id: `tu${i}`, name: 'read', input: { i } }] }));
+  const fake = fakeProvider([...turns, { json: { subject: 's', body: 'A body that is long enough to pass the schema minimum.', usedMemoryIds: [] } }]);
+  __setProviderForTests(fake);
+  const read: AgentTool = { definition: { name: 'read', description: 'r', inputSchema: { type: 'object', properties: {} } }, execute: async () => big };
+
+  const result = await runAgent({ ...base, kind: 'investigate', context: draftingContext(), outputSchema: Draft, tools: [read], maxSteps: 8 });
+  const last = fake.requests[5].messages.filter((m) => m.role === 'tool_results') as Array<{ results: Array<{ content: string }> }>;
+  assert.equal(last.length, 5);
+  assert.ok(last[0].results[0].content.length < 320 && /earlier result trimmed/.test(last[0].results[0].content)); // oldest: stubbed
+  assert.ok(last[1].results[0].content.length < 320);
+  assert.equal(last[2].results[0].content, big);   // last three: full
+  assert.equal(last[4].results[0].content, big);
+  const run = await AgentRun.findById(result.runId).lean();
+  assert.equal(run!.steps.length, 5);
+  assert.ok(run!.steps.every((s) => s.outputSummary.startsWith('xxxx')));
+
+  // Pure function: nothing is touched while there are only a few results.
+  assert.deepEqual(editContext([{ role: 'user', text: 'q' }, { role: 'tool_results', results: [{ id: '1', content: big }] }]).map((m) => (m.role === 'tool_results' ? m.results[0].content.length : 0)), [0, 1000]);
 });
 
 test('output that fails the schema is a failed run with nothing stored', async () => {

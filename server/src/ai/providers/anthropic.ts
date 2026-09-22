@@ -46,6 +46,7 @@ function toParams(req: CompletionRequest): Anthropic.MessageStreamParams {
     system: system.length ? system : undefined,
     messages,
     tools,
+    ...(tools?.length && req.toolChoice === 'none' ? { tool_choice: { type: 'none' as const } } : {}),
     output_config: {
       ...(req.outputSchema ? { format: zodOutputFormat(req.outputSchema) } : {}),
       ...(req.effort ? { effort: req.effort } : {}),

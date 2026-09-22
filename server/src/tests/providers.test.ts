@@ -210,7 +210,7 @@ test('compat: a model that rejects response_format gets retried without it, and 
     if (params.response_format) return new OpenAI.APIError(400, { error: { message: 'response_format is not supported by this model' } }, 'response_format is not supported by this model', new Headers());
     return {};
   });
-  const p = openaiCompatProvider('custom', '', 'http://localhost:11434/v1', sdk);
+  const p = openaiCompatProvider('openai', 'k', undefined, sdk);
   const res = await p.complete({ ...request, model: 'tiny' });
   assert.equal(calls.length, 2);
   assert.ok(calls[0].response_format);
@@ -226,7 +226,7 @@ test('compat: rejects both json_schema and tools → drops both in order; other 
     if (params.tools) return new OpenAI.APIError(400, { error: { message: 'This model does not support tools' } }, 'This model does not support tools', new Headers());
     return {};
   });
-  const p = openaiCompatProvider('custom', '', 'http://x/v1', sdk);
+  const p = openaiCompatProvider('openai', 'k', undefined, sdk);
   const res = await p.complete({ ...request, model: 'tiny' });
   assert.equal(calls.length, 3);
   assert.deepEqual(res.degraded, ['json_schema', 'tools']);

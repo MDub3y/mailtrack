@@ -10,6 +10,7 @@ import organizationRoutes from './routes/organizations';
 import aiRoutes        from './routes/ai';
 import contactRoutes, { memoryRouter } from './routes/contacts';
 import queueRoutes     from './routes/queue';
+import integrityRoutes from './routes/integrity';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/ai',        aiRoutes);
 app.use('/api/contacts',  contactRoutes);
 app.use('/api/memory',    memoryRouter);
 app.use('/api/queue',     queueRoutes);
+app.use('/api/integrity', integrityRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

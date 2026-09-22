@@ -56,9 +56,15 @@ function toParams(name: CompatName, req: CompletionRequest, drop: Set<string>): 
       type: 'function',
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
     }));
+    if (req.toolChoice === 'none') params.tool_choice = 'none';
   }
 
-  if (req.outputSchema && !drop.has('json_schema')) {
+  // Some OpenAI-compatible hosts (Groq among them) reject tools together
+  // with a JSON-schema response format. When a task has tools, the tools
+  // matter more: the schema is already in the prompt and Zod validates the
+  // result, so on non-OpenAI hosts the parameter is left out up front.
+  const schemaAllowedWithTools = name === 'openai' || !req.tools?.length;
+  if (req.outputSchema && schemaAllowedWithTools && !drop.has('json_schema')) {
     params.response_format = {
       type: 'json_schema',
       json_schema: { name: 'output', schema: z.toJSONSchema(req.outputSchema) as Record<string, unknown>, strict: false },
@@ -110,6 +116,34 @@ function unsupportedFeature(err: unknown): string | null {
   return null;
 }
 
+// Free tiers rate-limit per minute. The SDK's own retries back off for a
+// second or two, which is not enough; when a 429 names a wait ("try again in
+// 12.3s"), wait that long (capped) and retry, at most twice. A 413 whose
+// single request exceeds the limit is not retried: it can never succeed.
+const MAX_RATE_LIMIT_WAITS = Number(process.env.AI_RATE_LIMIT_WAITS || 2);
+const MAX_RATE_LIMIT_WAIT_MS = 65_000;
+
+function rateLimitWaitMs(err: unknown): number | null {
+  if (!(err instanceof OpenAI.APIError) || err.status !== 429) return null;
+  const m = /try again in\s+([\d.]+)\s*(ms|s|m)\b/i.exec(err.message || '');
+  if (!m) return 20_000;
+  const n = Number(m[1]);
+  const ms = m[2] === 'ms' ? n : m[2] === 'm' ? n * 60_000 : n * 1000;
+  return Math.min(Math.ceil(ms) + 500, MAX_RATE_LIMIT_WAIT_MS);
+}
+
+async function createWithRateLimitWait(client: OpenAI, params: ChatParams): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  for (let waits = 0; ; waits++) {
+    try {
+      return await client.chat.completions.create(params);
+    } catch (err) {
+      const wait = rateLimitWaitMs(err);
+      if (wait === null || waits >= MAX_RATE_LIMIT_WAITS) throw err;
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
 // `clientForTests` lets the adapter tests drive the mapping with a scripted
 // SDK stand-in. Product code never passes it.
 export function openaiCompatProvider(name: CompatName, apiKey: string, baseURL?: string, clientForTests?: OpenAI): ProviderClient {
@@ -130,7 +164,7 @@ export function openaiCompatProvider(name: CompatName, apiKey: string, baseURL?:
         const params = toParams(name, req, drop);
         let completion: OpenAI.Chat.Completions.ChatCompletion;
         try {
-          completion = await client.chat.completions.create(params);
+          completion = await createWithRateLimitWait(client, params);
         } catch (err) {
           const feature = unsupportedFeature(err);
           if (feature && !drop.has(feature)) { drop.add(feature); continue; }

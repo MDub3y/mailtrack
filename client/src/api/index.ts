@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -92,6 +92,15 @@ export const queueApi = {
     api.post(`/queue/${rule}/snooze`, { ...ref, days }),
   dismiss: (rule: QueueRule, ref: { emailId?: string; memoryId?: string }) =>
     api.post(`/queue/${rule}/dismiss`, ref),
+};
+
+export const integrityApi = {
+  overview: () => api.get<IntegrityView>('/integrity'),
+  opensForEmail: (emailId: string) => api.get<OpenSignalRow[]>(`/integrity/email/${emailId}/opens`),
+  label: (signalId: string, label: 'human' | 'automated') => api.post<{ ok: boolean; verdict: string; label: string }>(`/integrity/signals/${signalId}/label`, { label }),
+  investigate: () => api.post<{ ran: boolean; message?: string; candidates?: number; proposals?: Array<{ ruleId: string; proposalId: string; pattern: string; verdict: string; modelDisagreed: boolean }>; notes?: string; runId?: string }>('/integrity/investigate', {}),
+  reclassify: () => api.post<{ scanned: number; changed: number; emailsTouched: number }>('/integrity/reclassify', {}),
+  decideProposal: (proposalId: string, decision: 'accept' | 'reject', reason?: string) => api.post(`/ai/proposals/${proposalId}/decide`, { decision, reason }),
 };
 
 export const bulkEmailApi = {

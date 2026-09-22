@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import type { Email } from '../types';
 import { StatusBadge } from './StatusBadge';
+import { OpenLabels } from './OpenLabels';
 import { useAuth } from '../context/AuthContext';
 
 interface Props {
@@ -118,12 +119,8 @@ export const EmailDetail = ({ email, onClose }: Props) => {
                     </div>
                   );
                 })}
-                {email.events.some((evt) => evt.automated) && (
-                  <div className="text-[10px] text-[#94a3b8] italic pt-1">
-                    (Filtered {email.events.filter((e) => e.automated).length} automated mail-scanner prefetch{email.events.filter((e) => e.automated).length !== 1 ? 'es' : ''} — not counted as opens)
-                  </div>
-                )}
               </div>
+              <OpenLabels emailId={email._id} />
             </div>
           )}
         </div>

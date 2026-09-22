@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Email } from '../models/Email';
 import { contactForEmail, recordSignal } from '../services/signalService';
+import { classify } from '../services/classifierService';
 
 const router = Router();
 
@@ -37,13 +38,10 @@ const PIXEL = Buffer.from(
 // distinctive UA will still register as opens; that residual noise is a
 // known, unsolved limitation shared by every pixel-tracking product, not
 // something fixable from here.
-const AUTOMATED_SCAN_GRACE_MS = 3_000;
-const SCANNER_UA_PATTERN = /Edge\/12\.246/i;
-
-function isLikelyAutomatedScan(userAgent: string, msSinceCreated: number): boolean {
-  if (SCANNER_UA_PATTERN.test(userAgent)) return true;
-  return msSinceCreated < AUTOMATED_SCAN_GRACE_MS;
-}
+// Since Phase 3 the two heuristics above live as seed rules in
+// services/classifierService.ts, alongside rules the investigator proposes
+// and a human accepts. The classifier stays deterministic and synchronous;
+// no model runs here (ADR-1).
 
 // GET /api/track/:token/pixel.png — public, unauthenticated (mirrors the
 // public-route pattern already used for PDF share links in routes/share.ts).
@@ -54,7 +52,9 @@ router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<voi
       const now = new Date();
       const ip = ((req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || req.socket.remoteAddress || '';
       const userAgent = req.headers['user-agent'] || '';
-      const automated = isLikelyAutomatedScan(userAgent, now.getTime() - email.createdAt.getTime());
+      const msSinceCreated = now.getTime() - email.createdAt.getTime();
+      const verdict = await classify({ userAgent, ip, msSinceCreated, signalType: 'open' });
+      const automated = verdict.automated;
 
       email.events.push({ type: 'opened', timestamp: now, ip, userAgent, automated });
 
@@ -77,8 +77,9 @@ router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<voi
           emailId: email._id,
           type: 'open',
           at: now,
-          payload: { userAgent, ip, eventIndex, msSinceCreated: now.getTime() - email.createdAt.getTime() },
+          payload: { userAgent, ip, eventIndex, msSinceCreated, matchedBy: verdict.matchedBy },
           verdict: automated ? 'automated' : 'human',
+          ruleId: verdict.ruleId,
           source: 'pixel',
           dedupeKey: `open:${email._id}:${eventIndex}`,
         }))

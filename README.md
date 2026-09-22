@@ -249,6 +249,17 @@ cd server
 npm run eval:draft -- --limit 3   # draft + judge each queue item; needs a provider key
 ```
 
+**Phase 3: signal integrity.** The open classifier in the tracking route is now rule-driven: the two heuristics from the investigation above ship as seed rules, and further rules live in the database, accepted by a human. On any sent email you can mark an open as "Real open" or "Not a person"; the label overrides the verdict, rebuilds the open count, and joins a labelled set the classifier is measured against on the **Integrity** page (real opens kept, scans caught, suppressions that were right, with the misses listed). An investigator turns the manual work in that write-up into a repeatable, bounded loop: anomalous opens are selected by query (label disagreements, fast human verdicts, software-looking agents), the model examines them with five read-only tools over the corpus, and proposes rules with evidence and a predicted effect that the server recomputes independently; a proposal never changes anything until you accept it, and accepting reclassifies history in the background with labelled events left untouched. The wrapper gained two harness behaviours from running this loop on a free tier: older tool results are trimmed as a loop grows, and a spent step budget ends in one wrap-up turn with tool calls disabled rather than a hard failure.
+
+Classifier eval on the 14 seed labels: real opens kept 7/7, scans caught 5/7, precision 5/5. The two misses are proxy prescans that arrive past the timing floor with nothing to tell them from a real open. First live investigation on Groq: ten tool calls, then a correct conclusion that no rule meets the bar for exactly that reason.
+
+```bash
+cd server
+npm run seed:labels         # load the seed labels as ground truth
+npm run eval:classifier     # precision, recall, misses; exits 1 on regression vs the baseline; free
+npm run reclassify          # re-run the classifier over history under the current rules
+```
+
 ---
 
 ## Security
