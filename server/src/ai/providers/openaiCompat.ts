@@ -66,11 +66,14 @@ function toParams(name: CompatName, req: CompletionRequest, drop: Set<string>): 
   }
 
   if (req.effort && !drop.has('reasoning')) {
-    if (name === 'openai') {
-      params.reasoning_effort = req.effort;
-    } else {
-      // OpenRouter's unified reasoning parameter; harmless on models without it.
+    if (name === 'openrouter') {
+      // OpenRouter's unified reasoning parameter.
       (params as ChatParams & { reasoning?: { effort: string } }).reasoning = { effort: req.effort };
+    } else {
+      // OpenAI, and most OpenAI-compatible hosts (Groq, Together, gateways),
+      // take reasoning_effort. Models without it reject with a 400 and the
+      // parameter is dropped for the retry.
+      params.reasoning_effort = req.effort;
     }
   }
 
@@ -97,7 +100,11 @@ function mapStop(reason: string | null | undefined, hasToolCalls: boolean): Stop
 function unsupportedFeature(err: unknown): string | null {
   if (!(err instanceof OpenAI.APIError) || err.status !== 400) return null;
   const msg = (err.message || '').toLowerCase();
-  if (/response_format|json_schema|structured output/.test(msg)) return 'json_schema';
+  // Either the host does not support response_format, or (Groq) it enforces
+  // the schema server-side and rejects the request when the model's output
+  // does not validate. In both cases retry without it: the prompt still
+  // carries the schema and Zod validates the result.
+  if (/response_format|json_schema|structured output|validate json|json_validate/.test(msg)) return 'json_schema';
   if (/tools|tool_choice|function/.test(msg)) return 'tools';
   if (/reasoning/.test(msg)) return 'reasoning';
   return null;

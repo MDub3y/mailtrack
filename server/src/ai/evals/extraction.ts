@@ -75,7 +75,7 @@ async function main(): Promise<void> {
     let items: z.infer<typeof ItemsOnly>['items'] = [];
     let err = '';
     try {
-      const r = await runAgent({ kind: 'judge', ownerId: user._id, model, context: ctx, outputSchema: ItemsOnly, maxTokens: 1500, inputRefs: { note: `eval:extraction:${c.id}` } });
+      const r = await runAgent({ kind: 'judge', ownerId: user._id, model, context: ctx, outputSchema: ItemsOnly, maxTokens: 4000, inputRefs: { note: `eval:extraction:${c.id}` } });
       items = r.output.items;
       totalCost += r.costUsd;
     } catch (e) { err = e instanceof Error ? e.message : String(e); }

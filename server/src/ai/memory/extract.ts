@@ -86,7 +86,8 @@ export async function extractMemoryForEmail(emailId: string, direction: 'outboun
     model: 'extractor',
     context: ctx,
     outputSchema: ExtractionOutput,
-    maxTokens: 2000,
+    // Reasoning models spend output tokens thinking before the JSON; 2000 truncated on Groq.
+    maxTokens: 4000,
     inputRefs: { emailIds: [email._id.toString()], contactId: contactId.toString() },
   });
 

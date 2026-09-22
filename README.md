@@ -240,6 +240,8 @@ npm run backfill:contacts     # derive contacts and signals from existing sent e
 npm run eval:extraction       # 15 golden emails: recall, quote validity, noise; needs a provider key
 ```
 
+Measured on 2026-09-22 through a Groq key added as a custom endpoint, same prompt, 15 cases: `openai/gpt-oss-120b` found 17 of 19 expected items (89%) with 24 of 26 quotes verbatim (92%); `openai/gpt-oss-20b` found 14 of 19 (74%) with 25 of 25 quotes verbatim. The two quote misses were dropped by the verbatim check rather than stored. One 120b case hit the free tier's rate limit. The default extractor for that user is now the 120b model on the strength of these numbers, which is exactly the decision the eval exists to make.
+
 ---
 
 ## Security

@@ -108,7 +108,7 @@ test('snooze hides until the date; dismiss suppresses the same rule for the cool
   assert.deepEqual(items.map((i) => i.rule).sort(), ['opened_no_reply', 'unopened']);
 
   await snoozeItem(owner.toString(), 'unopened', { emailId: a.email._id.toString() }, new Date(NOW.getTime() + 2 * DAY));
-  await dismissItem(owner.toString(), 'opened_no_reply', { emailId: b.email._id.toString() }, 7);
+  await dismissItem(owner.toString(), 'opened_no_reply', { emailId: b.email._id.toString() }, 7, NOW);
 
   items = await buildQueue(owner, { now: NOW });
   assert.equal(items.length, 0);

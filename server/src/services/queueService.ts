@@ -171,8 +171,8 @@ export async function snoozeItem(ownerId: string, rule: QueueRule, ref: { emailI
   );
 }
 
-export async function dismissItem(ownerId: string, rule: QueueRule, ref: { emailId?: string; memoryId?: string }, cooldownDays = DEFAULT_THRESHOLDS.dismissCooldownDays): Promise<void> {
-  const until = new Date(Date.now() + cooldownDays * DAY);
+export async function dismissItem(ownerId: string, rule: QueueRule, ref: { emailId?: string; memoryId?: string }, cooldownDays = DEFAULT_THRESHOLDS.dismissCooldownDays, now = new Date()): Promise<void> {
+  const until = new Date(now.getTime() + cooldownDays * DAY);
   await QueueState.findOneAndUpdate(
     { ownerId, rule, emailId: ref.emailId, memoryId: ref.memoryId },
     { $set: { action: 'dismissed', until }, $setOnInsert: { ownerId, rule, emailId: ref.emailId, memoryId: ref.memoryId, createdAt: new Date() } },

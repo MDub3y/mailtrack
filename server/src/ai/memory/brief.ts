@@ -18,10 +18,20 @@ export const BriefOutput = z.object({
 const SYSTEM = [
   'You maintain a short brief about one contact for the person who emails them.',
   'Write two to four plain sentences: where things stand, what is owed in either direction, and what the engagement pattern says.',
-  'Only say things supported by the memory items or signals given; cite the ids of every memory item you relied on in citedMemoryIds.',
+  'Only say things supported by the memory items or signals given. Put the ids of every memory item you relied on in citedMemoryIds, and never write an id inside the text itself.',
+  'A commitment is open until its memory item says it is fulfilled. Do not infer fulfilment from an email subject, a sent signal, or a date having passed; if a due date has passed, say it is overdue.',
   'Fold new signals into the previous brief rather than rewriting from scratch; keep what is still true.',
   'No greetings, no advice, no scores. Facts and their dates.',
 ].join('\n');
+
+// Belt and braces for models that cite inline despite the instruction.
+function stripInlineIds(text: string): string {
+  return text
+    .replace(/\s*\(\s*(?:id:?\s*)?[a-f0-9]{24}(?:\s*,\s*[a-f0-9]{24})*\s*\)/gi, '')
+    .replace(/\s*\[[a-f0-9]{24}\]/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
 
 const MIN_SIGNALS_FOR_BRIEF = 2;
 const MAX_SIGNALS_IN_CONTEXT = 40;
@@ -104,7 +114,7 @@ export async function generateBrief(contactId: mongoose.Types.ObjectId | string)
     {
       $set: {
         brief: {
-          text: result.output.text,
+          text: stripInlineIds(result.output.text),
           citedMemoryIds: result.output.citedMemoryIds.map((id) => new mongoose.Types.ObjectId(id)),
           basedOnSignalCount: totalSignals,
           generatedAt: new Date(),
@@ -114,5 +124,5 @@ export async function generateBrief(contactId: mongoose.Types.ObjectId | string)
       $unset: { briefDirtyAt: 1 },
     }
   );
-  return { runId: result.runId, text: result.output.text };
+  return { runId: result.runId, text: stripInlineIds(result.output.text) };
 }
