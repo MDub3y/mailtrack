@@ -16,6 +16,8 @@ const FORBIDDEN_IMPORTERS = [
   'services/gmailService.ts',
   'services/sendgridService.ts',
   'services/emailService.ts',
+  'services/inboxService.ts',
+  'services/gmailClient.ts',
 ];
 
 const FORBIDDEN_PATTERNS = [

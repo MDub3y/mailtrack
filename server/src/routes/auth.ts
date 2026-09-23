@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { User } from '../models/User';
 import { protect, AuthRequest } from '../middleware/auth';
 import { buildGoogleAuthUrl, connectGmailAccount } from '../services/gmailService';
+import { buildGoogleReadAuthUrl, connectGmailReadGrant, GmailReadMismatchError } from '../services/inboxService';
 
 const router = Router();
 
@@ -143,6 +144,37 @@ router.get('/google/callback', async (req: Request, res: Response): Promise<void
   } catch (err) {
     console.error('Gmail connect error:', err);
     res.redirect(`${clientUrl}/sent?gmail=error`);
+  }
+});
+
+// Inbox reading is a second, separate consent (gmail.readonly), started from
+// the Triage page and never bundled into the first Gmail connection.
+// GET /api/auth/google/read?token=<platformJWT>
+router.get('/google/read', (req: Request, res: Response): void => {
+  const token = req.query.token as string | undefined;
+  if (!token) { res.status(400).json({ message: 'Missing token' }); return; }
+  try {
+    jwt.verify(token, process.env.JWT_SECRET!);
+  } catch {
+    res.status(401).json({ message: 'Invalid or expired token' });
+    return;
+  }
+  res.redirect(buildGoogleReadAuthUrl(token));
+});
+
+// GET /api/auth/google/read/callback?code=...&state=<platformJWT>
+router.get('/google/read/callback', async (req: Request, res: Response): Promise<void> => {
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+  if (error) { res.redirect(`${clientUrl}/triage?gmailRead=denied`); return; }
+  if (!code || !state) { res.redirect(`${clientUrl}/triage?gmailRead=error`); return; }
+  try {
+    const decoded = jwt.verify(state, process.env.JWT_SECRET!) as { userId: string };
+    await connectGmailReadGrant(decoded.userId, code);
+    res.redirect(`${clientUrl}/triage?gmailRead=connected`);
+  } catch (err) {
+    console.error('Gmail read grant error:', err);
+    res.redirect(`${clientUrl}/triage?gmailRead=${err instanceof GmailReadMismatchError ? 'mismatch' : 'error'}`);
   }
 });
 

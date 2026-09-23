@@ -29,7 +29,7 @@ export function buildGoogleAuthUrl(state: string): string {
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
 
-interface GoogleTokenResponse {
+export interface GoogleTokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
@@ -37,17 +37,17 @@ interface GoogleTokenResponse {
   token_type: string;
 }
 
-// Exchanges the OAuth authorization code for tokens, fetches the connected
-// Gmail address, and stores everything on the platform User document.
-export async function connectGmailAccount(userId: string, code: string): Promise<string> {
+// Exchanges an OAuth authorization code for tokens. Shared by the send
+// grant (here) and the read grant (inboxService), each with its own
+// redirect URI so the two consents stay separate.
+export async function exchangeGoogleCode(code: string, redirectUri: string): Promise<GoogleTokenResponse> {
   const params = new URLSearchParams({
     code,
     client_id: requireEnv('GOOGLE_CLIENT_ID'),
     client_secret: requireEnv('GOOGLE_CLIENT_SECRET'),
-    redirect_uri: requireEnv('GOOGLE_REDIRECT_URI'),
+    redirect_uri: redirectUri,
     grant_type: 'authorization_code',
   });
-
   const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -60,6 +60,42 @@ export async function connectGmailAccount(userId: string, code: string): Promise
   if (!tokens.refresh_token) {
     throw new Error('Google did not return a refresh token — revoke prior access at https://myaccount.google.com/permissions and try connecting again.');
   }
+  return tokens;
+}
+
+export async function refreshGoogleToken(refreshToken: string): Promise<GoogleTokenResponse> {
+  const params = new URLSearchParams({
+    client_id: requireEnv('GOOGLE_CLIENT_ID'),
+    client_secret: requireEnv('GOOGLE_CLIENT_SECRET'),
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+  });
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to refresh Google access token: ${await res.text()}`);
+  }
+  return (await res.json()) as GoogleTokenResponse;
+}
+
+// Best effort: tells Google the token is no longer wanted. A failure here
+// never blocks removing the grant on our side.
+export async function revokeGoogleToken(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Exchanges the code, fetches the connected Gmail address, and stores
+// everything on the platform User document (the send grant).
+export async function connectGmailAccount(userId: string, code: string): Promise<string> {
+  const tokens = await exchangeGoogleCode(code, requireEnv('GOOGLE_REDIRECT_URI'));
 
   const profileRes = await fetch(GOOGLE_USERINFO_URL, {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
@@ -80,27 +116,10 @@ export async function connectGmailAccount(userId: string, code: string): Promise
 }
 
 async function refreshAccessToken(user: IUser): Promise<string> {
-  const params = new URLSearchParams({
-    client_id: requireEnv('GOOGLE_CLIENT_ID'),
-    client_secret: requireEnv('GOOGLE_CLIENT_SECRET'),
-    refresh_token: user.googleRefreshToken!,
-    grant_type: 'refresh_token',
-  });
-
-  const res = await fetch(GOOGLE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to refresh Google access token: ${await res.text()}`);
-  }
-  const tokens = (await res.json()) as GoogleTokenResponse;
-
+  const tokens = await refreshGoogleToken(user.googleRefreshToken!);
   user.googleAccessToken = tokens.access_token;
   user.googleTokenExpiry = new Date(Date.now() + tokens.expires_in * 1000);
   await user.save();
-
   return tokens.access_token;
 }
 

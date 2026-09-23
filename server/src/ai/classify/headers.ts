@@ -31,16 +31,5 @@ export function isAutoReply(h: Pick<HeaderFacts, 'autoSubmitted' | 'precedence'>
   return /^(automatic reply|auto(matic)?[- ]?reply|out of (the )?office)\b/i.test(subject);
 }
 
-// Tracking tokens a reply can carry: our Message-ID (<mt-<token>@domain>) in
-// In-Reply-To/References, or the pixel URL quoted in the body.
-const TOKEN_IN_MESSAGE_ID = /<?mt-([0-9a-f-]{36})@[^>\s]+>?/gi;
-const TOKEN_IN_PIXEL_URL = /\/api\/track\/([0-9a-f-]{36})\/pixel\.png/gi;
-
-export function trackingTokensIn(h: Pick<HeaderFacts, 'inReplyTo' | 'references'>, text: string): string[] {
-  const out = new Set<string>();
-  for (const src of [h.inReplyTo ?? '', ...(h.references ?? [])]) {
-    for (const m of src.matchAll(TOKEN_IN_MESSAGE_ID)) out.add(m[1].toLowerCase());
-  }
-  for (const m of (text || '').matchAll(TOKEN_IN_PIXEL_URL)) out.add(m[1].toLowerCase());
-  return [...out];
-}
+// Tracking tokens a reply can carry; shared with the inbox service.
+export { trackingTokensIn } from '../../utils/trackingAnchors';

@@ -18,8 +18,42 @@ export interface IUser extends Document {
   // own SendGrid account (domain-authenticated by the enterprise at
   // onboarding) instead of needing to connect a personal Gmail account.
   organizationId?: mongoose.Types.ObjectId;
+  // Gmail read grant (Phase 4): a second, separate consent for
+  // gmail.readonly, never widened from the send grant. Tokens are encrypted
+  // at rest (utils/secrets) and hidden from queries unless selected.
+  gmailRead?: IGmailReadGrant;
   comparePassword(candidate: string): Promise<boolean>;
 }
+
+export interface IGmailReadGrant {
+  address: string;
+  refreshToken?: string;   // encrypted, select:false
+  accessToken?: string;    // encrypted, select:false
+  tokenExpiry?: Date;
+  scope: string;
+  grantedAt: Date;
+  syncEnabled: boolean;
+  historyId?: string;
+  initialSyncDone: boolean;
+  lastSyncAt?: Date;
+  lastSyncError?: string;
+  syncLockUntil?: Date;
+}
+
+const GmailReadSchema = new Schema<IGmailReadGrant>({
+  address:         { type: String, required: true, lowercase: true },
+  refreshToken:    { type: String, select: false },
+  accessToken:     { type: String, select: false },
+  tokenExpiry:     { type: Date },
+  scope:           { type: String, default: '' },
+  grantedAt:       { type: Date, default: Date.now },
+  syncEnabled:     { type: Boolean, default: true },
+  historyId:       { type: String },
+  initialSyncDone: { type: Boolean, default: false },
+  lastSyncAt:      { type: Date },
+  lastSyncError:   { type: String },
+  syncLockUntil:   { type: Date },
+}, { _id: false });
 
 const UserSchema = new Schema<IUser>({
   name: { type: String, required: true, trim: true },
@@ -32,6 +66,7 @@ const UserSchema = new Schema<IUser>({
   googleTokenExpiry:  { type: Date, select: false },
   gmailAddress:       { type: String },
   organizationId:     { type: Schema.Types.ObjectId, ref: 'Organization' },
+  gmailRead:          { type: GmailReadSchema },
 });
 
 UserSchema.pre('save', async function (next) {
