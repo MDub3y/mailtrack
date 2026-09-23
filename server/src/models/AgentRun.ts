@@ -11,10 +11,12 @@ export type RunKind =
   | 'voice_profile'
   | 'draft_follow_up'
   | 'investigate'
-  | 'judge';
+  | 'judge'
+  | 'classify'   // cheap category pick by the extractor model
+  | 'embed';     // embeddings for the classification tier
 
 export const RUN_KINDS: RunKind[] = [
-  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge',
+  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge', 'classify', 'embed',
 ];
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
@@ -54,6 +56,8 @@ export interface IAgentRun extends Document {
     emailIds?: string[];
     contactId?: string;
     eventRefs?: Array<{ emailId: string; eventIndex: number }>;
+    inboundMessageIds?: string[];
+    categoryKeys?: string[];
     note?: string;
   };
   receipt: IContextReceipt;

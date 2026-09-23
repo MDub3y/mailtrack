@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import type { CompletionRequest, CompletionResponse, ProviderClient, ProviderName, StopReason, ToolCall } from './types';
-import { jsonSchemaInstruction } from './types';
+import type { CompletionRequest, CompletionResponse, EmbeddingRequest, EmbeddingResponse, ProviderClient, ProviderName, StopReason, ToolCall } from './types';
+import { jsonSchemaInstruction, UnsupportedCapabilityError } from './types';
 
 // One adapter for everything that speaks the OpenAI Chat Completions shape:
 // OpenAI itself, OpenRouter, and any custom endpoint (Ollama, LM Studio,
@@ -132,16 +132,29 @@ function rateLimitWaitMs(err: unknown): number | null {
   return Math.min(Math.ceil(ms) + 500, MAX_RATE_LIMIT_WAIT_MS);
 }
 
-async function createWithRateLimitWait(client: OpenAI, params: ChatParams): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+async function withRateLimitWait<T>(fn: () => Promise<T>): Promise<T> {
   for (let waits = 0; ; waits++) {
     try {
-      return await client.chat.completions.create(params);
+      return await fn();
     } catch (err) {
       const wait = rateLimitWaitMs(err);
       if (wait === null || waits >= MAX_RATE_LIMIT_WAITS) throw err;
       await new Promise((r) => setTimeout(r, wait));
     }
   }
+}
+
+function createWithRateLimitWait(client: OpenAI, params: ChatParams): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  return withRateLimitWait(() => client.chat.completions.create(params));
+}
+
+// A host that has no /embeddings answers 404, or 400/501 mentioning the
+// endpoint or model. Anything else is a real error.
+function embeddingsUnsupported(err: unknown): string | null {
+  if (!(err instanceof OpenAI.APIError)) return null;
+  if (err.status === 404 || err.status === 501) return `HTTP ${err.status}`;
+  if (err.status === 400 && /embedding|not supported|unknown model|does not exist|not found/i.test(err.message || '')) return err.message;
+  return null;
 }
 
 // `clientForTests` lets the adapter tests drive the mapping with a scripted
@@ -204,6 +217,30 @@ export function openaiCompatProvider(name: CompatName, apiKey: string, baseURL?:
     },
     async countTokens(): Promise<number | null> {
       return null; // no pre-call counting on the Chat Completions shape
+    },
+    async embed(req: EmbeddingRequest): Promise<EmbeddingResponse> {
+      if (!req.inputs.length) return { vectors: [], usage: { input: 0 } };
+      let res: OpenAI.Embeddings.CreateEmbeddingResponse;
+      try {
+        res = await withRateLimitWait(() => client.embeddings.create({
+          model: req.model,
+          input: req.inputs,
+          encoding_format: 'float',
+          ...(req.dimensions ? { dimensions: req.dimensions } : {}),
+          ...(name === 'openrouter' ? ({ usage: { include: true } } as unknown as Record<string, never>) : {}),
+        }));
+      } catch (err) {
+        const why = embeddingsUnsupported(err);
+        if (why) throw new UnsupportedCapabilityError(name, 'embeddings', why);
+        throw err;
+      }
+      const vectors = [...res.data].sort((a, b) => a.index - b.index).map((d) => d.embedding);
+      const reportedCost = (res.usage as (typeof res.usage & { cost?: number }) | undefined)?.cost;
+      return {
+        vectors,
+        usage: { input: res.usage?.prompt_tokens ?? 0 },
+        costUsd: typeof reportedCost === 'number' ? reportedCost : undefined,
+      };
     },
   };
 }

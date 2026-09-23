@@ -85,11 +85,34 @@ export interface CompletionResponse {
   degraded: string[];
 }
 
+export interface EmbeddingRequest {
+  model: string;
+  inputs: string[];
+  dimensions?: number;
+}
+
+export interface EmbeddingResponse {
+  vectors: number[][];
+  usage: { input: number };
+  costUsd?: number;
+}
+
+// Thrown by an adapter whose host turns out not to offer a capability at
+// call time (a custom endpoint without /embeddings, for example). Callers
+// fall back to another backend and may cache the negative.
+export class UnsupportedCapabilityError extends Error {
+  constructor(public provider: ProviderName, public capability: 'embeddings', detail?: string) {
+    super(`${provider} does not support ${capability}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
 export interface ProviderClient {
   readonly name: ProviderName;
   complete(req: CompletionRequest): Promise<CompletionResponse>;
   // Exact prompt size when the provider can count; null otherwise.
   countTokens(req: CompletionRequest): Promise<number | null>;
+  // Absent when the adapter has no embeddings path at all (Anthropic).
+  embed?(req: EmbeddingRequest): Promise<EmbeddingResponse>;
 }
 
 // Rendered into the system prompt for providers without native structured

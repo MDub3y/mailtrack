@@ -76,6 +76,7 @@ export const AiSettings = () => {
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [primary, setPrimary] = useState('');
   const [extractor, setExtractor] = useState('');
+  const [embedder, setEmbedder] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, AiConnectionTest>>({});
@@ -87,6 +88,7 @@ export const AiSettings = () => {
       setCustomBaseUrl(res.data.customBaseUrl ?? '');
       setPrimary(res.data.models.primary ?? '');
       setExtractor(res.data.models.extractor ?? '');
+      setEmbedder(res.data.models.embedder ?? '');
     } catch {
       setError('Could not load AI settings.');
     }
@@ -124,7 +126,7 @@ export const AiSettings = () => {
 
   const saveModels = async () => {
     setSaving('models'); setError('');
-    try { setView((await aiApi.updateSettings({ models: { primary: primary || null, extractor: extractor || null } })).data); }
+    try { setView((await aiApi.updateSettings({ models: { primary: primary || null, extractor: extractor || null, embedder: embedder || null } })).data); }
     catch (err) { setError(errMsg(err, 'Could not save model choices.')); }
     finally { setSaving(null); }
   };
@@ -232,13 +234,19 @@ export const AiSettings = () => {
               <div className="text-xs text-[#0f172a] mb-1">Extractor <span className="text-[#64748b]">(memory extraction on every sent email; cheap and frequent)</span></div>
               <input className={inputCls} placeholder={view.defaults.extractor} value={extractor} onChange={(e) => setExtractor(e.target.value)} />
             </label>
+            <label className="block">
+              <div className="text-xs text-[#0f172a] mb-1">Embedder <span className="text-[#64748b]">(cheap inbox classification; used only when this provider offers embeddings, otherwise the extractor classifies)</span></div>
+              <input className={inputCls} placeholder={view.defaults.embedder} value={embedder} onChange={(e) => setEmbedder(e.target.value)} />
+            </label>
             <div className="flex gap-2">
               <button className={btnCls} disabled={saving === 'models'} onClick={saveModels}>Save models</button>
               <button className={btnCls} disabled={testing === 'primary'} onClick={() => test('primary', 'primary')}>Test primary</button>
               <button className={btnCls} disabled={testing === 'extractor'} onClick={() => test('extractor', 'extractor')}>Test extractor</button>
+              <button className={btnCls} disabled={testing === 'embedder'} onClick={() => test('embedder', 'embedder')}>Test embedder</button>
             </div>
             <TestBadge label="primary" />
             <TestBadge label="extractor" />
+            <TestBadge label="embedder" />
           </div>
         </section>
       </div>

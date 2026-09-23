@@ -71,7 +71,8 @@ test('settings: empty by default, with server defaults visible', async () => {
   assert.deepEqual(json.providers, {
     anthropic: { configured: false }, openai: { configured: false }, openrouter: { configured: false }, custom: { configured: false },
   });
-  assert.deepEqual(json.models, { primary: null, extractor: null });
+  assert.deepEqual(json.models, { primary: null, extractor: null, embedder: null });
+  assert.equal(json.defaults.embedder, 'openai:text-embedding-3-small');
   assert.equal(json.defaults.primary, 'anthropic:claude-opus-5');
   assert.equal(json.serverKeysAllowed, false);
 });

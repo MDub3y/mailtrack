@@ -253,6 +253,75 @@ test('custom provider without a base URL is rejected up front', () => {
 // Refs and pricing
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Embeddings capability
+// ---------------------------------------------------------------------------
+
+function fakeEmbeddingsSdk(handler: (params: OpenAI.EmbeddingCreateParams) => Partial<OpenAI.CreateEmbeddingResponse> | Error) {
+  const calls: OpenAI.EmbeddingCreateParams[] = [];
+  const sdk = {
+    embeddings: {
+      async create(params: OpenAI.EmbeddingCreateParams) {
+        calls.push(params);
+        const out = handler(params);
+        if (out instanceof Error) throw out;
+        const inputs = params.input as string[];
+        return {
+          object: 'list', model: params.model,
+          // Deliberately out of order to check the adapter sorts by index.
+          data: inputs.map((_, i) => ({ object: 'embedding', index: i, embedding: [i, 1] })).reverse(),
+          usage: { prompt_tokens: 12, total_tokens: 12 },
+          ...out,
+        };
+      },
+    },
+    chat: { completions: { create: async () => { throw new Error('not used'); } } },
+  } as unknown as OpenAI;
+  return { sdk, calls };
+}
+
+test('openai: embed maps inputs and dimensions, orders vectors by index, reports usage', async () => {
+  const { sdk, calls } = fakeEmbeddingsSdk(() => ({}));
+  const p = openaiCompatProvider('openai', 'k', undefined, sdk);
+  const res = await p.embed!({ model: 'text-embedding-3-small', inputs: ['a', 'b', 'c'], dimensions: 256 });
+  assert.equal(calls[0].model, 'text-embedding-3-small');
+  assert.deepEqual(calls[0].input, ['a', 'b', 'c']);
+  assert.equal(calls[0].dimensions, 256);
+  assert.equal(calls[0].encoding_format, 'float');
+  assert.deepEqual(res.vectors, [[0, 1], [1, 1], [2, 1]]);
+  assert.deepEqual(res.usage, { input: 12 });
+  assert.equal(res.costUsd, undefined);
+  assert.deepEqual(await p.embed!({ model: 'm', inputs: [] }), { vectors: [], usage: { input: 0 } });
+});
+
+test('openrouter: embed asks for cost and passes it through', async () => {
+  const { sdk, calls } = fakeEmbeddingsSdk(() => ({ usage: { prompt_tokens: 5, total_tokens: 5, cost: 0.0000001 } as OpenAI.CreateEmbeddingResponse['usage'] }));
+  const p = openaiCompatProvider('openrouter', 'k', undefined, sdk);
+  const res = await p.embed!({ model: 'openai/text-embedding-3-small', inputs: ['a'] });
+  assert.deepEqual((calls[0] as { usage?: unknown }).usage, { include: true });
+  assert.equal(res.costUsd, 0.0000001);
+});
+
+test('compat: a host without /embeddings raises UnsupportedCapabilityError; other errors propagate', async () => {
+  const { UnsupportedCapabilityError } = await import('../ai/providers/types');
+  const { sdk } = fakeEmbeddingsSdk(() => new OpenAI.APIError(404, { error: { message: 'Not Found' } }, 'Not Found', new Headers()));
+  const p = openaiCompatProvider('custom', '', 'https://api.groq.com/openai/v1', sdk);
+  await assert.rejects(p.embed!({ model: 'x', inputs: ['a'] }), (e: unknown) => e instanceof UnsupportedCapabilityError && e.provider === 'custom');
+
+  const { sdk: sdk2 } = fakeEmbeddingsSdk(() => new OpenAI.APIError(400, { error: { message: 'model `x` does not exist' } }, 'model `x` does not exist', new Headers()));
+  await assert.rejects(openaiCompatProvider('openai', 'k', undefined, sdk2).embed!({ model: 'x', inputs: ['a'] }), UnsupportedCapabilityError);
+
+  const { sdk: sdk3 } = fakeEmbeddingsSdk(() => new OpenAI.APIError(401, { error: { message: 'bad key' } }, 'bad key', new Headers()));
+  await assert.rejects(openaiCompatProvider('openai', 'k', undefined, sdk3).embed!({ model: 'x', inputs: ['a'] }), (e: unknown) => e instanceof OpenAI.APIError && e.status === 401);
+});
+
+test('anthropic: has no embed method; embedding prices are in the table', () => {
+  const { sdk } = fakeAnthropicSdk({});
+  assert.equal(anthropicProvider('key', undefined, sdk).embed, undefined);
+  const u = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
+  assert.deepEqual(estimateCost('openai:text-embedding-3-small', u), { costUsd: 0.02, costSource: 'table' });
+});
+
 test('parseModelRef handles model ids that themselves contain colons and slashes', () => {
   assert.deepEqual(parseModelRef('openrouter:meta-llama/llama-3.3-70b-instruct:free'), { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free', ref: 'openrouter:meta-llama/llama-3.3-70b-instruct:free' });
   assert.deepEqual(parseModelRef('custom:llama3.2'), { provider: 'custom', model: 'llama3.2', ref: 'custom:llama3.2' });

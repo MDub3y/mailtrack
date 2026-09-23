@@ -27,7 +27,10 @@ export interface IAiSettings extends Document {
   // For the custom provider only: the OpenAI-compatible base URL.
   customBaseUrl?: string;
   // Per-task model refs as `provider:model`, overriding server defaults.
-  models: { primary?: string; extractor?: string };
+  models: { primary?: string; extractor?: string; embedder?: string };
+  // Negative probe cache: a provider found not to offer embeddings at call
+  // time is not retried on every batch (see ai/classify/chooser.ts).
+  capabilities?: { embeddingsUnsupported?: Partial<Record<ProviderName, Date>> };
   updatedAt: Date;
 }
 
@@ -46,8 +49,13 @@ const AiSettingsSchema = new Schema<IAiSettings>({
   },
   customBaseUrl: { type: String },
   models: {
-    type: new Schema({ primary: String, extractor: String }, { _id: false }),
+    type: new Schema({ primary: String, extractor: String, embedder: String }, { _id: false }),
     default: {},
+  },
+  capabilities: {
+    type: new Schema({
+      embeddingsUnsupported: { type: new Schema({ anthropic: Date, openai: Date, openrouter: Date, custom: Date }, { _id: false }) },
+    }, { _id: false }),
   },
   updatedAt: { type: Date, default: Date.now },
 });

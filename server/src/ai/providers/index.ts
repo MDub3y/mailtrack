@@ -3,7 +3,7 @@ import { AiSettings } from '../../models/AiSettings';
 import type { ProviderName } from '../../models/AiSettings';
 import { PROVIDER_NAMES } from '../../models/AiSettings';
 import { decryptSecret } from '../crypto';
-import { allowServerKeys, defaultModelRef, ModelTask } from '../config';
+import { allowServerKeys, defaultModelRef, isModelTask, ModelTask } from '../config';
 import { anthropicProvider } from './anthropic';
 import { openaiCompatProvider } from './openaiCompat';
 import type { ProviderClient } from './types';
@@ -68,7 +68,7 @@ export async function resolveProvider(ownerId: string | mongoose.Types.ObjectId,
   const settings = await AiSettings.findOne({ ownerId }).select('+keys').lean();
 
   let ref: string;
-  if (modelOrTask === 'primary' || modelOrTask === 'extractor') {
+  if (isModelTask(modelOrTask)) {
     ref = settings?.models?.[modelOrTask] || defaultModelRef(modelOrTask);
   } else {
     ref = modelOrTask;

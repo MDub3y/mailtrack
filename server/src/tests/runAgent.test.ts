@@ -355,6 +355,52 @@ test('when the provider cannot count tokens the receipt keeps the estimate and s
   assert.equal(result.receipt.totalInputTokens, estimate);
 });
 
+test('runEmbedding: one embed run with usage, cost and chunking; the embedder task resolves per owner', async () => {
+  const { runEmbedding } = await import('../ai/runAgent');
+  await AiSettings.create({ ownerId: owner, models: { embedder: 'openai:text-embedding-3-small' } });
+  process.env.AI_EMBED_BATCH_MAX = '2';
+  const fake = fakeProvider([], { name: 'openai', embed: (inputs) => inputs.map((s, i) => [s.length, i]) });
+  __setProviderForTests(fake);
+
+  const r = await runEmbedding({ ownerId: owner, inputs: ['a', 'bb', 'ccc', 'dddd', 'x'.repeat(5000)], inputRefs: { note: 'test' } });
+  assert.equal(r.model, 'openai:text-embedding-3-small');
+  assert.equal(r.vectors.length, 5);
+  assert.deepEqual(r.vectors[0], [1, 0]);
+  assert.equal(r.vectors[4][0], 2000);                       // input capped
+  assert.deepEqual(fake.embedRequests.map((b) => b.length), [2, 2, 1]); // chunked
+  assert.equal(r.dimensions, 2);
+  assert.ok(r.usage.input > 0);
+  assert.ok(r.costUsd > 0);
+
+  const run = await AgentRun.findById(r.runId).lean();
+  assert.equal(run!.kind, 'embed');
+  assert.equal(run!.status, 'succeeded');
+  assert.equal(run!.costSource, 'table');
+  assert.deepEqual(run!.output, { count: 5, dimensions: 2 });
+  assert.equal(run!.receipt.exact, true);
+  delete process.env.AI_EMBED_BATCH_MAX;
+});
+
+test('runEmbedding: refused at the ceiling, failed when the provider cannot embed', async () => {
+  const { runEmbedding } = await import('../ai/runAgent');
+  const { UnsupportedCapabilityError } = await import('../ai/providers/types');
+  process.env.AI_DAILY_TOKENS_EMBED = '0';
+  __setProviderForTests(fakeProvider([], { name: 'openai', embed: (i) => i.map(() => [1]) }));
+  await assert.rejects(runEmbedding({ ownerId: owner, model: 'openai:text-embedding-3-small', inputs: ['a'] }), BudgetExceededError);
+  assert.equal((await AgentRun.findOne({ kind: 'embed' }).lean())!.status, 'refused');
+  delete process.env.AI_DAILY_TOKENS_EMBED;
+
+  // Anthropic adapter: no embed method at all.
+  __setProviderForTests(fakeProvider([], { name: 'anthropic' }));
+  await assert.rejects(runEmbedding({ ownerId: owner, model: 'anthropic:claude-opus-5', inputs: ['a'] }), UnsupportedCapabilityError);
+
+  // A custom host that turns out to have no /embeddings: the run is recorded as failed.
+  __setProviderForTests(fakeProvider([], { name: 'custom', embed: 'unsupported' }));
+  await assert.rejects(runEmbedding({ ownerId: owner, model: 'custom:whatever', inputs: ['a'] }), UnsupportedCapabilityError);
+  const failed = await AgentRun.findOne({ kind: 'embed', status: 'failed' }).lean();
+  assert.match(failed!.error!, /does not support embeddings/);
+});
+
 test('a provider error is recorded on the run and rethrown', async () => {
   const err = Object.assign(new Error('socket hang up'), { status: 502 });
   __setProviderForTests(fakeProvider([], { throwOnCall: err }));

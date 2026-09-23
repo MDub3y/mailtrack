@@ -215,15 +215,15 @@ export type ProviderName = 'anthropic' | 'openai' | 'openrouter' | 'custom';
 export interface AiSettingsView {
   providers: Record<ProviderName, { configured: boolean; last4?: string; addedAt?: string }>;
   customBaseUrl: string | null;
-  models: { primary: string | null; extractor: string | null };
-  defaults: { primary: string; extractor: string };
+  models: { primary: string | null; extractor: string | null; embedder: string | null };
+  defaults: { primary: string; extractor: string; embedder: string };
   serverKeysAllowed: boolean;
 }
 
 export interface AiSettingsUpdate {
   keys?: Partial<Record<ProviderName, string | null>>;
   customBaseUrl?: string | null;
-  models?: { primary?: string | null; extractor?: string | null };
+  models?: { primary?: string | null; extractor?: string | null; embedder?: string | null };
 }
 
 export interface AiConnectionTest {
@@ -235,6 +235,7 @@ export interface AiConnectionTest {
   usage?: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUsd?: number;
   degraded?: string[];
+  dimensions?: number;
 }
 
 export interface AgentRun {

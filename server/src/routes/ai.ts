@@ -9,7 +9,8 @@ import { isAiEnabled, allowServerKeys, defaultModelRef } from '../ai/config';
 import { encryptSecret, last4 } from '../ai/crypto';
 import { parseModelRef, NoProviderKeyError } from '../ai/providers';
 import { ContextBuilder } from '../ai/context/builder';
-import { runAgent, BudgetExceededError, RunFailedError } from '../ai/runAgent';
+import { runAgent, runEmbedding, BudgetExceededError, RunFailedError } from '../ai/runAgent';
+import { UnsupportedCapabilityError } from '../ai/providers/types';
 
 const router = Router();
 router.use(protect);
@@ -23,7 +24,7 @@ router.get('/status', (_req: AuthRequest, res: Response): void => {
 // BYOK settings
 // ---------------------------------------------------------------------------
 
-function publicSettings(s: { keyMeta?: Record<string, { last4: string; addedAt: Date }>; customBaseUrl?: string; models?: { primary?: string; extractor?: string } } | null) {
+function publicSettings(s: { keyMeta?: Record<string, { last4: string; addedAt: Date }>; customBaseUrl?: string; models?: { primary?: string; extractor?: string; embedder?: string } } | null) {
   const providers: Record<string, { configured: boolean; last4?: string; addedAt?: Date }> = {};
   for (const p of PROVIDER_NAMES) {
     const meta = s?.keyMeta?.[p];
@@ -32,8 +33,8 @@ function publicSettings(s: { keyMeta?: Record<string, { last4: string; addedAt: 
   return {
     providers,
     customBaseUrl: s?.customBaseUrl ?? null,
-    models: { primary: s?.models?.primary ?? null, extractor: s?.models?.extractor ?? null },
-    defaults: { primary: defaultModelRef('primary'), extractor: defaultModelRef('extractor') },
+    models: { primary: s?.models?.primary ?? null, extractor: s?.models?.extractor ?? null, embedder: s?.models?.embedder ?? null },
+    defaults: { primary: defaultModelRef('primary'), extractor: defaultModelRef('extractor'), embedder: defaultModelRef('embedder') },
     serverKeysAllowed: allowServerKeys(),
   };
 }
@@ -57,6 +58,7 @@ const SettingsUpdate = z.object({
   models: z.object({
     primary: z.string().max(200).nullable().optional(),
     extractor: z.string().max(200).nullable().optional(),
+    embedder: z.string().max(200).nullable().optional(),
   }).optional(),
 });
 
@@ -70,7 +72,7 @@ router.put('/settings', async (req: AuthRequest, res: Response): Promise<void> =
     }
     const body = parsed.data;
 
-    for (const ref of [body.models?.primary, body.models?.extractor]) {
+    for (const ref of [body.models?.primary, body.models?.extractor, body.models?.embedder]) {
       if (ref) {
         try { parseModelRef(ref); } catch (e) { res.status(400).json({ message: (e as Error).message }); return; }
       }
@@ -96,6 +98,7 @@ router.put('/settings', async (req: AuthRequest, res: Response): Promise<void> =
     if (body.models) {
       if (body.models.primary !== undefined) s.models.primary = body.models.primary ?? undefined;
       if (body.models.extractor !== undefined) s.models.extractor = body.models.extractor ?? undefined;
+      if (body.models.embedder !== undefined) s.models.embedder = body.models.embedder ?? undefined;
       s.markModified('models');
     }
     s.updatedAt = new Date();
@@ -115,6 +118,12 @@ router.put('/settings', async (req: AuthRequest, res: Response): Promise<void> =
 router.post('/settings/test', async (req: AuthRequest, res: Response): Promise<void> => {
   const model = typeof req.body?.model === 'string' && req.body.model ? req.body.model : 'primary';
   try {
+    // The embedder task is not a chat model: test it with one short embedding.
+    if (model === 'embedder') {
+      const r = await runEmbedding({ ownerId: req.userId!, model, inputs: ['MailTrack connection test'], inputRefs: { note: 'settings test' } });
+      res.json({ ok: true, runId: r.runId, provider: r.provider, model: r.model, usage: r.usage, costUsd: r.costUsd, degraded: [], dimensions: r.dimensions });
+      return;
+    }
     const ctx = new ContextBuilder()
       .add({ name: 'system', budgetTokens: 200, stable: true, text: 'You are verifying a connection. Answer exactly as asked.' })
       .add({ name: 'task', budgetTokens: 100, stable: false, text: 'Reply with the JSON object {"ok": true, "model": "<the model name you are>"}.' })
@@ -131,8 +140,10 @@ router.post('/settings/test', async (req: AuthRequest, res: Response): Promise<v
     });
     res.json({ ok: true, runId: result.runId, provider: result.provider, model: result.model, usage: result.usage, costUsd: result.costUsd, degraded: result.degraded });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = err instanceof NoProviderKeyError ? 400 : err instanceof BudgetExceededError ? 429 : err instanceof RunFailedError ? 502 : 400;
+    const message = err instanceof UnsupportedCapabilityError
+      ? `${err.message}. Classification will use the extractor model instead.`
+      : err instanceof Error ? err.message : String(err);
+    const status = err instanceof NoProviderKeyError || err instanceof UnsupportedCapabilityError ? 400 : err instanceof BudgetExceededError ? 429 : err instanceof RunFailedError ? 502 : 400;
     res.status(status).json({ ok: false, message, runId: err instanceof RunFailedError ? err.runId : undefined });
   }
 });

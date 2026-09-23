@@ -6,6 +6,7 @@ import { checkBudget } from './budget';
 import { BuiltContext } from './context/builder';
 import { resolveProvider } from './providers';
 import type { CompletionResponse, NeutralMessage, NeutralTool, ToolResult, Effort } from './providers/types';
+import { UnsupportedCapabilityError } from './providers/types';
 import { estimateCost } from './providers/pricing';
 
 // The one wrapper every model call goes through (doc/02-ai-architecture.md,
@@ -303,5 +304,102 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
     const message = `${status ? `provider error ${status}: ` : ''}${err instanceof Error ? err.message : String(err)}`;
     await fail(message);
     throw err; // unreachable; fail() throws
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Embeddings. Not a chat completion, but the same discipline: feature flag,
+// daily ceiling, one persisted run per call with usage and cost. Vectors are
+// never stored on the run (only their count and dimensions).
+// ---------------------------------------------------------------------------
+
+// Read per call so tests (and operators) can change it without a restart.
+const embedBatchMax = () => Number(process.env.AI_EMBED_BATCH_MAX || 96);
+const EMBED_INPUT_MAX_CHARS = 2000;
+
+export interface EmbedSpec {
+  ownerId: string | mongoose.Types.ObjectId;
+  model?: ModelTask | string;          // default 'embedder'
+  inputs: string[];
+  dimensions?: number;
+  inputRefs?: IAgentRun['inputRefs'];
+}
+
+export interface EmbedResult {
+  runId: string;
+  vectors: number[][];
+  dimensions: number;
+  usage: IAgentRun['usage'];
+  costUsd: number;
+  provider: string;
+  model: string;
+}
+
+export async function runEmbedding(spec: EmbedSpec): Promise<EmbedResult> {
+  if (!isAiEnabled()) throw new AiDisabledError();
+
+  const budget = await checkBudget(spec.ownerId, 'embed');
+  if (!budget.allowed) {
+    await AgentRun.create({
+      ownerId: spec.ownerId, kind: 'embed', modelId: String(spec.model ?? 'embedder'), status: 'refused',
+      inputRefs: spec.inputRefs ?? {}, error: `budget: ${budget.spentToday} of ${budget.ceiling} tokens used today`, finishedAt: new Date(),
+    });
+    throw new BudgetExceededError('embed', budget.spentToday, budget.ceiling);
+  }
+
+  const resolved = await resolveProvider(spec.ownerId, spec.model ?? 'embedder');
+  if (!resolved.client.embed) {
+    throw new UnsupportedCapabilityError(resolved.provider, 'embeddings', 'adapter has no embeddings path');
+  }
+
+  const inputs = spec.inputs.map((s) => (s.length > EMBED_INPUT_MAX_CHARS ? s.slice(0, EMBED_INPUT_MAX_CHARS) : s));
+  const run = await AgentRun.create({
+    ownerId: spec.ownerId,
+    kind: 'embed',
+    provider: resolved.provider,
+    modelId: resolved.ref,
+    keySource: resolved.keySource,
+    status: 'running',
+    inputRefs: spec.inputRefs ?? {},
+    receipt: {
+      sections: [{ name: 'task', tokens: inputs.reduce((n, s) => n + Math.ceil(s.length / 4), 0), itemIds: [], droppedItemIds: [], cacheBoundary: false }],
+      totalInputTokens: inputs.reduce((n, s) => n + Math.ceil(s.length / 4), 0),
+      exact: false,
+      cacheReadTokens: 0,
+    },
+  });
+
+  const usage: IAgentRun['usage'] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  let reportedCost = 0;
+  let anyReportedCost = false;
+  const vectors: number[][] = [];
+
+  try {
+    const batch = embedBatchMax();
+    for (let i = 0; i < inputs.length; i += batch) {
+      const res = await resolved.client.embed({ model: resolved.model, inputs: inputs.slice(i, i + batch), dimensions: spec.dimensions });
+      vectors.push(...res.vectors);
+      usage.input += res.usage.input;
+      if (typeof res.costUsd === 'number') { reportedCost += res.costUsd; anyReportedCost = true; }
+    }
+    const cost = estimateCost(resolved.ref, usage, anyReportedCost ? reportedCost : undefined);
+    run.status = 'succeeded';
+    run.usage = usage;
+    run.costUsd = cost.costUsd;
+    run.costSource = cost.costSource;
+    run.receipt.totalInputTokens = usage.input || run.receipt.totalInputTokens;
+    run.receipt.exact = usage.input > 0;
+    run.output = { count: vectors.length, dimensions: vectors[0]?.length ?? 0 };
+    run.finishedAt = new Date();
+    await run.save();
+    return { runId: run._id.toString(), vectors, dimensions: vectors[0]?.length ?? 0, usage, costUsd: run.costUsd, provider: resolved.provider, model: resolved.ref };
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    run.status = 'failed';
+    run.error = `${status ? `provider error ${status}: ` : ''}${err instanceof Error ? err.message : String(err)}`;
+    run.usage = usage;
+    run.finishedAt = new Date();
+    await run.save();
+    throw err;
   }
 }
