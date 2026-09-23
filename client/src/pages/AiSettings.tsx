@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { aiApi } from '../api';
 import type { AiSettingsView, AiConnectionTest, ProviderName, VoiceView } from '../types';
+import { CategoriesSettings } from '../components/CategoriesSettings';
 
 // The sender's voice: derived from their own sent mail, editable in plain
 // prose, and the stable prefix under every draft.
@@ -169,6 +170,8 @@ export const AiSettings = () => {
 
       <div className="px-8 py-6 max-w-3xl space-y-8">
         <VoiceSection />
+
+        <CategoriesSettings />
 
         <section>
           <h2 className="text-sm font-semibold text-[#0f172a] mb-3">Providers</h2>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -28,6 +28,7 @@ export const authApi = {
     api.post<AuthResponse>('/auth/login', data),
   me: () => api.get<User>('/auth/me'),
   googleConnectUrl: () => `${API_BASE}/auth/google?token=${encodeURIComponent(localStorage.getItem('token') || '')}`,
+  googleReadConnectUrl: () => `${API_BASE}/auth/google/read?token=${encodeURIComponent(localStorage.getItem('token') || '')}`,
 };
 
 export const emailsApi = {
@@ -101,6 +102,32 @@ export const integrityApi = {
   investigate: () => api.post<{ ran: boolean; message?: string; candidates?: number; proposals?: Array<{ ruleId: string; proposalId: string; pattern: string; verdict: string; modelDisagreed: boolean }>; notes?: string; runId?: string }>('/integrity/investigate', {}),
   reclassify: () => api.post<{ scanned: number; changed: number; emailsTouched: number }>('/integrity/reclassify', {}),
   decideProposal: (proposalId: string, decision: 'accept' | 'reject', reason?: string) => api.post(`/ai/proposals/${proposalId}/decide`, { decision, reason }),
+};
+
+export const inboxApi = {
+  status: () => api.get<InboxStatusView>('/inbox/status'),
+  syncNow: () => api.post<InboxSyncResult>('/inbox/sync', {}),
+  setSyncEnabled: (enabled: boolean) => api.put<{ enabled: boolean }>('/inbox/sync', { enabled }),
+  revoke: () => api.delete<{ revoked: boolean; deletedMessages: number }>('/inbox/grant'),
+  listMessages: (q: { category?: string; status?: TriageStatus; limit?: number; before?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (q.category) params.set('category', q.category);
+    if (q.status) params.set('status', q.status);
+    if (q.limit) params.set('limit', String(q.limit));
+    if (q.before) params.set('before', q.before);
+    return api.get<{ messages: InboundMessageView[]; nextBefore: string | null }>(`/inbox/messages?${params.toString()}`);
+  },
+  getMessage: (id: string) => api.get<InboundMessageView>(`/inbox/messages/${id}`),
+  correct: (id: string, categoryKey: string) => api.post<InboundMessageView>(`/inbox/messages/${id}/category`, { categoryKey }),
+  process: (id: string) => api.post<{ queued: boolean; status?: string; emailId?: string; runId?: string; extracted?: number; error?: string }>(`/inbox/messages/${id}/process`, {}),
+  skip: (id: string) => api.post<{ status: TriageStatus }>(`/inbox/messages/${id}/skip`, {}),
+  reclassify: (q: { categoryKey?: string; status?: string; sinceDays?: number } = {}) => api.post<{ selected: number; queued: number; classified?: number }>('/inbox/reclassify', q),
+  categories: () => api.get<CategoryView[]>('/inbox/categories'),
+  createCategory: (data: { key?: string; name: string; description: string; examples?: string[]; policy?: CategoryPolicy }) => api.post<CategoryView>('/inbox/categories', data),
+  updateCategory: (key: string, data: { name?: string; description?: string; examples?: string[]; policy?: CategoryPolicy }) => api.put<CategoryView>(`/inbox/categories/${key}`, data),
+  deleteCategory: (key: string) => api.delete<{ deleted: boolean }>(`/inbox/categories/${key}`),
+  addExample: (key: string, text: string) => api.post<CategoryView>(`/inbox/categories/${key}/examples`, { text }),
+  removeExample: (key: string, index: number) => api.delete<CategoryView>(`/inbox/categories/${key}/examples/${index}`),
 };
 
 export const bulkEmailApi = {

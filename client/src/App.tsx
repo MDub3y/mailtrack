@@ -16,6 +16,7 @@ import { Contacts } from './pages/Contacts';
 import { ContactDetail } from './pages/ContactDetail';
 import { Queue } from './pages/Queue';
 import { Integrity } from './pages/Integrity';
+import { Triage } from './pages/Triage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode; }) => {
   const { user, isLoading } = useAuth();
@@ -181,6 +182,21 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
             </NavLink>
 
             <NavLink
+              to="/triage"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? 'bg-[#ffffff] text-[#0f172a] border border-[#eaedf1] shadow-sm'
+                  : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]'
+                }`
+              }
+            >
+              <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h6m8-6l3 3-3 3" />
+              </svg>
+              Triage
+            </NavLink>
+
+            <NavLink
               to="/runs"
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
@@ -325,6 +341,14 @@ const AppRoutes = () => (
               element={
                 <ProtectedRoute>
                   <Integrity />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/triage"
+              element={
+                <ProtectedRoute>
+                  <Triage />
                 </ProtectedRoute>
               }
             />

@@ -272,3 +272,68 @@ export interface BulkJobStatus {
   result?: { sent: number; failed: number; errors: string[] };
   failedReason?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Inbox triage (Phase 4)
+// ---------------------------------------------------------------------------
+
+export type TriageStatus = 'unclassified' | 'classified' | 'awaiting_approval' | 'processed' | 'skipped' | 'failed';
+export type ClassifierBackend = 'headers' | 'embeddings' | 'llm' | 'local' | 'human';
+export type CategoryPolicy = 'never' | 'ask' | 'auto';
+
+export interface InboundMessageView {
+  _id: string;
+  gmailMessageId: string;
+  gmailThreadId: string;
+  internalDate: string;
+  from: { address: string; name?: string };
+  subject: string;
+  snippet: string;
+  textExcerpt?: string;
+  matchedEmailId?: string;
+  matchedBy?: 'thread' | 'message_id' | 'pixel_url';
+  contactId?: string;
+  emailId?: string;
+  headers?: { hasAttachments?: boolean; hasCalendarPart?: boolean; listUnsubscribe?: boolean };
+  classification?: {
+    categoryKey: string;
+    confidence: number;
+    backend: ClassifierBackend;
+    modelRef?: string;
+    runId?: string;
+    scores?: Record<string, number>;
+    reason?: string;
+    correctedFrom?: string;
+    at: string;
+  };
+  triage: { status: TriageStatus; policyAtDecision?: CategoryPolicy; processedAt?: string; processRunId?: string; error?: string };
+}
+
+export interface CategoryView {
+  key: string;
+  name: string;
+  description: string;
+  policy: CategoryPolicy;
+  builtin: boolean;
+  order: number;
+  examples: Array<{ text: string; source: 'seed' | 'user' | 'correction'; addedAt: string }>;
+  counts: { total: number; awaiting: number };
+}
+
+export interface InboxStatusView {
+  aiEnabled: boolean;
+  connected: boolean;
+  address?: string;
+  syncEnabled?: boolean;
+  initialSyncDone?: boolean;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  grantedAt?: string;
+  counts: { total: number; unclassified: number; awaiting: number; processed: number };
+}
+
+export interface InboxSyncResult {
+  queued: boolean;
+  sync?: { skipped?: string; mode?: string; fetched: number; created: number; capped: boolean; error?: string };
+  classify?: { considered: number; classified: number; awaiting: number; auto: number; skipped: number; unclassified: number };
+}
