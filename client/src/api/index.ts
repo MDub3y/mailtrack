@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -80,6 +80,27 @@ export const contactsApi = {
   addMemory: (id: string, data: { kind: 'fact' | 'commitment' | 'preference'; content: string; structured?: Record<string, unknown> }) =>
     api.post<MemoryItem>(`/contacts/${id}/memory`, data),
   regenerateBrief: (id: string) => api.post<{ generated: boolean; text?: string; runId?: string; message?: string }>(`/contacts/${id}/brief`, {}),
+  exportMarkdown: (id: string) => api.get<Blob>(`/contacts/${id}/export.md`, { responseType: 'blob' }),
+  exportAll: () => api.get<Blob>('/contacts/export.md', { responseType: 'blob' }),
+};
+
+// Saves a downloaded blob through a temporary link (the API needs the
+// bearer token, so a plain href cannot be used).
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export const integrationsApi = {
+  get: () => api.get<IntegrationsView>('/integrations'),
+  rotateInbound: () => api.post<IntegrationsView>('/integrations/inbound/rotate', {}),
+  addOutbound: (data: { url: string; events?: Array<'signal' | 'queue'> }) => api.post<{ _id: string; url: string; events: string[]; secret: string }>('/integrations/outbound', data),
+  setOutboundEnabled: (id: string, enabled: boolean) => api.put<{ enabled: boolean }>(`/integrations/outbound/${id}`, { enabled }),
+  removeOutbound: (id: string) => api.delete<{ deleted: boolean }>(`/integrations/outbound/${id}`),
+  testOutbound: (id: string) => api.post<{ ok: boolean; status?: number; error?: string }>(`/integrations/outbound/${id}/test`, {}).catch((err) => { const d = err?.response?.data; if (d && typeof d.ok === 'boolean') return { data: d as { ok: boolean; status?: number; error?: string } }; throw err; }),
+  mcpToken: () => api.post<{ token: string; expiresInDays: number; scope: string }>('/integrations/mcp-token', {}),
 };
 
 export const memoryApi = {

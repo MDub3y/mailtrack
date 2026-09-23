@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { contactsApi, memoryApi, aiApi } from '../api';
+import { contactsApi, memoryApi, aiApi, downloadBlob } from '../api';
 import type { ContactDetailView, MemoryItem, MemoryKind } from '../types';
 import { EmailCompose, type ComposeInitial } from '../components/EmailCompose';
 
@@ -140,6 +140,7 @@ export const ContactDetail = () => {
           <div className="mt-2 flex items-center gap-4 text-[11px] text-[#64748b]">
             <span>{contact.stats.sent} sent</span><span>{contact.stats.opened} opens</span><span>{contact.stats.replied} replies</span><span>{contact.stats.docViews} document views</span>
             <button className={btn} disabled={drafting} onClick={draft}>{drafting ? 'Drafting…' : 'Draft follow-up'}</button>
+            <button className={btn} onClick={async () => { const r = await contactsApi.exportMarkdown(contact._id); downloadBlob(r.data, `${contact.address}.md`); }}>Export (.md)</button>
             {draftMsg && <span className="text-[#991b1b]">{draftMsg}</span>}
           </div>
         </div>

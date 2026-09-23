@@ -7,6 +7,7 @@ import { Memory } from '../models/Memory';
 import { Email } from '../models/Email';
 import { timeline } from '../services/signalService';
 import { addUserMemory, decideMemory } from '../ai/memory/policy';
+import { renderContactMarkdown, renderAllContactsMarkdown } from '../services/exportService';
 
 const router = Router();
 router.use(protect);
@@ -28,6 +29,35 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     })));
   } catch (err) {
     console.error('Contacts error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/contacts/export.md — every contact as one markdown document.
+router.get('/export.md', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const md = await renderAllContactsMarkdown(req.userId!);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="mailtrack-memory-${new Date().toISOString().slice(0, 10)}.md"`);
+    res.send(md);
+  } catch (err) {
+    console.error('Export error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/contacts/:id/export.md — one contact: brief, sourced items, timeline.
+router.get('/:id/export.md', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) { res.status(404).json({ message: 'Contact not found' }); return; }
+    const md = await renderContactMarkdown(req.userId!, req.params.id);
+    if (!md) { res.status(404).json({ message: 'Contact not found' }); return; }
+    const contact = await Contact.findById(req.params.id).select('address').lean();
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${(contact?.address ?? 'contact').replace(/[^a-z0-9.@_-]/gi, '_')}.md"`);
+    res.send(md);
+  } catch (err) {
+    console.error('Export error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

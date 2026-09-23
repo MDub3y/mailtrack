@@ -357,3 +357,25 @@ export interface DigestView {
   text: string;
   aiEnabled: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Integrations (Phase 5)
+// ---------------------------------------------------------------------------
+
+export interface OutboundEndpointView {
+  _id: string;
+  url: string;
+  events: Array<'signal' | 'queue'>;
+  enabled: boolean;
+  createdAt: string;
+  lastDeliveryAt?: string;
+  lastStatus?: number;
+  lastError?: string;
+  failures: number;
+}
+
+export interface IntegrationsView {
+  inbound: { url: string };
+  outbound: OutboundEndpointView[];
+  mcp: { url: string };
+}
