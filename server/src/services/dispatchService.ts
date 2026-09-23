@@ -32,10 +32,13 @@ export interface DispatchParams {
   subject: string;
   html: string;
   text: string;
+  trackingToken?: string;
 }
 
 export interface DispatchResult {
   providerMessageId?: string;
+  providerThreadId?: string;
+  rfcMessageId?: string;
 }
 
 export async function dispatchEmail(senderId: string, params: DispatchParams): Promise<DispatchResult> {

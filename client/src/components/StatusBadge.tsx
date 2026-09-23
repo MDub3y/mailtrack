@@ -5,6 +5,7 @@ const config: Record<EmailStatus, { label: string; bg: string; color: string; do
   delivered: { label: 'Delivered', bg: '#f0fdf4', color: '#16a34a', dot: '#22c55e' },
   opened: { label: 'Opened', bg: '#eff6ff', color: '#2563eb', dot: '#3b82f6' },
   failed: { label: 'Failed', bg: '#fef2f2', color: '#dc2626', dot: '#ef4444' },
+  received: { label: 'Received', bg: '#faf5ff', color: '#7e22ce', dot: '#a855f7' },
 };
 
 interface Props {

@@ -6,7 +6,7 @@ export interface ITrackedLink {
   clickCount: number;
 }
 
-export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
+export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed' | 'received';
 export type EventType = 'sent' | 'delivered' | 'opened' | 'failed';
 
 export interface IEmailEvent {
@@ -42,6 +42,12 @@ export interface IEmail extends Document {
   // drafting context can carry a stable, cheap thread history (doc/05, Elevation 5).
   summary?: string;
   direction?: 'outbound' | 'inbound';
+  // Provider thread anchors, so a reply can be matched to the email it answers.
+  gmailThreadId?: string;
+  rfcMessageId?: string;                   // the Message-ID header we set: <mt-<trackingToken>@domain>
+  // Inbound only: the tracked email this replies to, and the InboundMessage it was promoted from.
+  inReplyToEmailId?: mongoose.Types.ObjectId;
+  inboundMessageId?: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
@@ -67,7 +73,7 @@ const EmailSchema = new Schema<IEmail>({
   textBody: { type: String, default: '' },
   status: {
     type: String,
-    enum: ['sent', 'delivered', 'opened', 'failed'],
+    enum: ['sent', 'delivered', 'opened', 'failed', 'received'],
     default: 'sent',
   },
   events: { type: [EmailEventSchema], default: [] },
@@ -83,12 +89,17 @@ const EmailSchema = new Schema<IEmail>({
   failureReason:     { type: String },
   summary:           { type: String, maxlength: 300 },
   direction:         { type: String, enum: ['outbound', 'inbound'] },
+  gmailThreadId:     { type: String },
+  rfcMessageId:      { type: String },
+  inReplyToEmailId:  { type: Schema.Types.ObjectId, ref: 'Email' },
+  inboundMessageId:  { type: Schema.Types.ObjectId, ref: 'InboundMessage' },
   createdAt: { type: Date, default: Date.now },
 });
 
 // Fast lookup for sender's outbox and recipient's inbox
 EmailSchema.index({ senderId:    1, createdAt: -1 });
 EmailSchema.index({ contactId:   1, createdAt: -1 });
+EmailSchema.index({ senderId:    1, gmailThreadId: 1 }, { sparse: true });
 EmailSchema.index({ recipientId: 1, createdAt: -1 });
 
 export const Email = mongoose.model<IEmail>('Email', EmailSchema);

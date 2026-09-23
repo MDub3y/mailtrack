@@ -48,7 +48,7 @@ export interface ExtractResult {
 export async function extractMemoryForEmail(emailId: string, direction: 'outbound' | 'inbound' = 'outbound'): Promise<ExtractResult | null> {
   const email = await Email.findById(emailId);
   if (!email) return null;
-  const contactId = email.contactId ?? (await Contact.findOne({ ownerId: email.senderId, address: email.to }))?._id;
+  const contactId = email.contactId ?? (await Contact.findOne({ ownerId: email.senderId, address: direction === 'inbound' ? email.from : email.to }))?._id;
   if (!contactId) return null;
   const contact = await Contact.findById(contactId);
 
@@ -59,9 +59,11 @@ export async function extractMemoryForEmail(emailId: string, direction: 'outboun
     .sort({ createdAt: -1 }).limit(40).lean();
 
   const trusted = direction === 'outbound';
+  // For inbound mail the contact is the `from` address; for outbound, the `to`.
+  const counterpart = direction === 'inbound' ? email.from : email.to;
   const emailBlock = [
     `Date: ${email.createdAt.toISOString().slice(0, 10)}`,
-    `${trusted ? 'From the sender to' : 'From'} ${contact?.displayName ? `${contact.displayName} <${email.to}>` : email.to}`,
+    `${trusted ? 'From the sender to' : 'From'} ${contact?.displayName ? `${contact.displayName} <${counterpart}>` : counterpart}`,
     `Subject: ${email.subject}`,
     '',
     bodyText,

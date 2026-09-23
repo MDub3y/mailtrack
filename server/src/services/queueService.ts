@@ -65,7 +65,7 @@ export async function buildQueue(ownerId: mongoose.Types.ObjectId | string, opts
 
   // Latest email per contact drives the per-email rules; older emails in
   // the same thread are not separately nagged about.
-  const emails = await Email.find({ senderId: ownerId, contactId: { $exists: true }, status: { $in: ['delivered', 'opened'] } })
+  const emails = await Email.find({ senderId: ownerId, contactId: { $exists: true }, status: { $in: ['delivered', 'opened'] }, direction: { $ne: 'inbound' } })
     .sort({ createdAt: -1 }).select('_id contactId subject createdAt status').lean();
   const latestByContact = new Map<string, typeof emails[number]>();
   for (const e of emails) {

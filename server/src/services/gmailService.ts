@@ -146,7 +146,14 @@ function assertNoHeaderInjection(value: string, field: string): void {
   }
 }
 
-function buildMimeMessage(params: { from: string; to: string; subject: string; html: string; text: string }): string {
+// The Message-ID we set carries the tracking token, so a reply's In-Reply-To
+// or References header identifies the tracked email with no API call.
+export function rfcMessageIdFor(trackingToken: string, fromAddress: string): string {
+  const domain = fromAddress.split('@')[1] || 'mailtrack.local';
+  return `<mt-${trackingToken}@${domain}>`;
+}
+
+export function buildMimeMessage(params: { from: string; to: string; subject: string; html: string; text: string; trackingToken?: string }): string {
   assertNoHeaderInjection(params.from, 'from');
   assertNoHeaderInjection(params.to, 'to');
 
@@ -156,6 +163,7 @@ function buildMimeMessage(params: { from: string; to: string; subject: string; h
     `To: ${params.to}`,
     `Subject: ${encodeHeaderWord(params.subject)}`,
     `Date: ${new Date().toUTCString()}`,
+    ...(params.trackingToken ? [`Message-ID: ${rfcMessageIdFor(params.trackingToken, params.from)}`] : []),
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -181,10 +189,13 @@ export interface SendViaGmailParams {
   subject: string;
   html: string;
   text: string;
+  trackingToken?: string;
 }
 
 export interface SendViaGmailResult {
   providerMessageId?: string;
+  providerThreadId?: string;   // Gmail threadId: replies land in the same thread
+  rfcMessageId?: string;       // the Message-ID header we set
 }
 
 // Sends a real email through the sending user's own Gmail account via the
@@ -199,6 +210,7 @@ export async function sendViaGmail(userId: string, params: SendViaGmailParams): 
     subject: params.subject,
     html: params.html,
     text: params.text,
+    trackingToken: params.trackingToken,
   }));
 
   const res = await fetch(GMAIL_SEND_URL, {
@@ -214,6 +226,10 @@ export async function sendViaGmail(userId: string, params: SendViaGmailParams): 
     throw new Error(`Gmail send failed: ${await res.text()}`);
   }
 
-  const result = (await res.json()) as { id?: string };
-  return { providerMessageId: result.id };
+  const result = (await res.json()) as { id?: string; threadId?: string };
+  return {
+    providerMessageId: result.id,
+    providerThreadId: result.threadId,
+    rfcMessageId: params.trackingToken ? rfcMessageIdFor(params.trackingToken, fromAddress) : undefined,
+  };
 }

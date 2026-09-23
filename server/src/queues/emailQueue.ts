@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Email, IEmail } from '../models/Email';
 import { User } from '../models/User';
 import { injectTrackingPixel, renderAttachmentLinks, renderAttachmentText } from '../services/emailService';
-import { dispatchEmail } from '../services/dispatchService';
+import { dispatchEmail, DispatchResult } from '../services/dispatchService';
 import { ensureContact, recordSignal } from '../services/signalService';
 
 export interface BulkEmailJob {
@@ -84,10 +84,13 @@ async function attachContact(email: IEmail): Promise<void> {
   });
 }
 
-async function markDelivered(email: IEmail, providerMessageId: string | undefined, opts: { extract: boolean }): Promise<void> {
+async function markDelivered(email: IEmail, dispatched: DispatchResult, opts: { extract: boolean }): Promise<void> {
   const now = new Date();
   email.status = 'delivered';
-  email.providerMessageId = providerMessageId;
+  email.providerMessageId = dispatched.providerMessageId;
+  // Anchors for matching a reply back to this email (Phase 4).
+  if (dispatched.providerThreadId) email.gmailThreadId = dispatched.providerThreadId;
+  if (dispatched.rfcMessageId) email.rfcMessageId = dispatched.rfcMessageId;
   email.events.push({ type: 'delivered', timestamp: now });
   await email.save();
   if (email.contactId) {
@@ -125,13 +128,14 @@ async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
 
   await attachContact(email);
   const { html, text } = outgoingBodies(email);
-  const { providerMessageId } = await dispatchEmail(email.senderId.toString(), {
+  const dispatched = await dispatchEmail(email.senderId.toString(), {
     to: email.to,
     subject: email.subject,
     html,
     text,
+    trackingToken: email.trackingToken,
   });
-  await markDelivered(email, providerMessageId, { extract: true });
+  await markDelivered(email, dispatched, { extract: true });
 }
 
 async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult> {
@@ -172,8 +176,8 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
       const { html, text } = outgoingBodies(email);
 
       try {
-        const { providerMessageId } = await dispatchEmail(senderId, { to: addr, subject, html, text });
-        await markDelivered(email, providerMessageId, { extract: false });
+        const dispatched = await dispatchEmail(senderId, { to: addr, subject, html, text, trackingToken });
+        await markDelivered(email, dispatched, { extract: false });
         deliveredIds.push(email._id.toString());
         result.sent++;
       } catch (sendErr) {

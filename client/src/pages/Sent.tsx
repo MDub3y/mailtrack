@@ -7,7 +7,7 @@ import { EmailDetail } from '../components/EmailDetail';
 import { Toast, type ToastMessage } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
 
-const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2, failed: 2 };
+const STATUS_RANK: Record<EmailStatus, number> = { sent: 0, delivered: 1, opened: 2, failed: 2, received: 0 };
 
 export const Sent = () => {
   const { user, refreshUser } = useAuth();
@@ -36,7 +36,7 @@ export const Sent = () => {
         const prev = prevStatusRef.current[email._id];
         if (prev && STATUS_RANK[email.status] > STATUS_RANK[prev]) {
           const labels: Record<EmailStatus, string> = {
-            sent: 'Sent', delivered: 'Delivered', opened: 'Opened', failed: 'Failed',
+            sent: 'Sent', delivered: 'Delivered', opened: 'Opened', failed: 'Failed', received: 'Received',
           };
           addToast(`"${email.subject}" — ${labels[email.status]}`, email.status === 'failed' ? 'error' : 'success');
         }

@@ -14,7 +14,7 @@ export interface User {
   organizationId?: Organization;
 }
 
-export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed';
+export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed' | 'received';
 
 export interface EmailEvent {
   type: EmailStatus;

@@ -104,7 +104,9 @@ router.post('/send', async (req: AuthRequest, res: Response): Promise<void> => {
 // GET /api/emails/sent  — emails the current user sent
 router.get('/sent', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const emails = await Email.find({ senderId: req.userId })
+    // Inbound (received) mail lives on the contact page and the Triage page,
+    // not in the outbox.
+    const emails = await Email.find({ senderId: req.userId, direction: { $ne: 'inbound' } })
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
