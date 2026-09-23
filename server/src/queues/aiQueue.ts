@@ -17,7 +17,9 @@ export type AiJob =
   | { name: 'reclassify'; data: { ownerId?: string } }
   | { name: 'inbox-sync'; data: { ownerId: string; trigger: 'scheduled' | 'user' } }
   | { name: 'classify-messages'; data: { ownerId: string; ids?: string[] } }
-  | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } };
+  | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } }
+  | { name: 'webhook-deliver'; data: { ownerId: string; endpointId: string; envelope: unknown } }
+  | { name: 'queue-watch'; data: { ownerId: string } };
 
 type AiJobData = AiJob['data'];
 
@@ -164,6 +166,39 @@ export async function reconcileInboxSyncSchedules(): Promise<number> {
   return users.length;
 }
 
+// Outbound webhooks (Phase 5). Not gated on AI_ENABLED: signals exist
+// without a model. Delivery retries three times with backoff.
+export async function enqueueWebhookDelivery(ownerId: string, endpointId: string, envelope: { id: string }): Promise<boolean> {
+  if (queueDisabled()) return false;
+  await aiQueue().add('webhook-deliver', { ownerId, endpointId, envelope }, {
+    jobId: `webhook:${endpointId}:${envelope.id}`, attempts: 3, backoff: { type: 'exponential', delay: 15_000 }, removeOnComplete: 200, removeOnFail: 200,
+  }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+  return true;
+}
+
+export const QUEUE_WATCH_EVERY_MS = () => Number(process.env.QUEUE_WATCH_EVERY_MS || 300_000);
+
+export async function scheduleQueueWatch(ownerId: string): Promise<boolean> {
+  if (queueDisabled()) return false;
+  await aiQueue().upsertJobScheduler(`queue-watch:${ownerId}`, { every: QUEUE_WATCH_EVERY_MS() }, {
+    name: 'queue-watch', data: { ownerId }, opts: { attempts: 1, removeOnComplete: 20, removeOnFail: 20 },
+  });
+  return true;
+}
+
+export async function unscheduleQueueWatch(ownerId: string): Promise<void> {
+  if (queueDisabled()) return;
+  await aiQueue().removeJobScheduler(`queue-watch:${ownerId}`).catch(() => {});
+}
+
+export async function reconcileQueueWatchSchedules(): Promise<number> {
+  if (queueDisabled()) return 0;
+  const { WebhookConfig } = await import('../models/Webhook');
+  const cfgs = await WebhookConfig.find({ outbound: { $elemMatch: { enabled: true, events: 'queue' } } }).select('ownerId').lean();
+  for (const c of cfgs) await scheduleQueueWatch(c.ownerId.toString());
+  return cfgs.length;
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -215,6 +250,17 @@ export function startAiWorker(): Worker<AiJobData> {
           const { processInboundMessage } = await import('../ai/classify/process');
           const { inboundMessageId, trigger } = job.data as Extract<AiJob, { name: 'process-message' }>['data'];
           return processInboundMessage(inboundMessageId, trigger);
+        }
+        case 'webhook-deliver': {
+          const { deliverToEndpoint } = await import('../services/webhookService');
+          const { ownerId, endpointId, envelope } = job.data as Extract<AiJob, { name: 'webhook-deliver' }>['data'];
+          const r = await deliverToEndpoint(ownerId, endpointId, envelope as Parameters<typeof deliverToEndpoint>[2]);
+          if (!r.ok && r.status !== 410 && r.error !== 'endpoint disabled' && r.error !== 'endpoint not found') throw new Error(r.error ?? 'delivery failed');
+          return r;
+        }
+        case 'queue-watch': {
+          const { watchQueue } = await import('../services/webhookService');
+          return watchQueue((job.data as { ownerId: string }).ownerId);
         }
         case 'recompute-engagement': {
           const { recomputeEngagement } = await import('../ai/memory/engagement');
