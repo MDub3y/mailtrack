@@ -14,6 +14,7 @@
     "eval:draft": "ts-node src/ai/evals/draft.ts",
     "seed:labels": "ts-node src/scripts/seedLabels.ts",
     "eval:classifier": "ts-node src/ai/evals/classifier.ts",
+    "eval:classification": "ts-node src/ai/evals/classification.ts",
     "reclassify": "ts-node src/scripts/reclassify.ts"
   },
   "dependencies": {
