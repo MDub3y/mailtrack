@@ -1,5 +1,6 @@
 import { Queue, Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
+import crypto from 'crypto';
 import { isAiEnabled } from '../ai/config';
 
 // Background jobs for the AI layer, in their own queue so nothing here
@@ -13,7 +14,9 @@ export type AiJob =
   | { name: 'recompute-engagement'; data: { contactId: string } }
   | { name: 'voice-profile'; data: { ownerId: string } }
   | { name: 'investigate'; data: { ownerId: string } }
-  | { name: 'reclassify'; data: { ownerId?: string } };
+  | { name: 'reclassify'; data: { ownerId?: string } }
+  | { name: 'classify-messages'; data: { ownerId: string; ids?: string[] } }
+  | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } };
 
 type AiJobData = AiJob['data'];
 
@@ -105,6 +108,25 @@ export async function enqueueInvestigate(ownerId: string): Promise<void> {
     .catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
 }
 
+// Inbox triage (Phase 4). Both return whether a job was queued, so callers
+// can run inline when the queue is off (tests, AI_QUEUE_DISABLED).
+export async function enqueueClassify(ownerId: string, ids?: string[]): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled()) return false;
+  const key = ids?.length ? crypto.createHash('sha1').update([...ids].sort().join(',')).digest('hex').slice(0, 16) : `all:${Math.floor(Date.now() / 30_000)}`;
+  await aiQueue().add('classify-messages', { ownerId, ids }, {
+    jobId: `classify:${ownerId}:${key}`, attempts: 2, backoff: { type: 'exponential', delay: 10_000 }, removeOnComplete: 200, removeOnFail: 100,
+  }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+  return true;
+}
+
+export async function enqueueProcessMessage(inboundMessageId: string, trigger: 'auto' | 'user' | 'retry'): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled()) return false;
+  await aiQueue().add('process-message', { inboundMessageId, trigger }, {
+    jobId: `process:${inboundMessageId}:${Math.floor(Date.now() / 30_000)}`, attempts: 1, removeOnComplete: 500, removeOnFail: 200,
+  }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+  return true;
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -141,6 +163,16 @@ export function startAiWorker(): Worker<AiJobData> {
         case 'reclassify': {
           const { reclassifyOpens } = await import('../services/classifierService');
           return reclassifyOpens({ ownerId: (job.data as { ownerId?: string }).ownerId });
+        }
+        case 'classify-messages': {
+          const { classifyInboundMessages } = await import('../ai/classify');
+          const { ownerId, ids } = job.data as Extract<AiJob, { name: 'classify-messages' }>['data'];
+          return classifyInboundMessages(ownerId, { ids });
+        }
+        case 'process-message': {
+          const { processInboundMessage } = await import('../ai/classify/process');
+          const { inboundMessageId, trigger } = job.data as Extract<AiJob, { name: 'process-message' }>['data'];
+          return processInboundMessage(inboundMessageId, trigger);
         }
         case 'recompute-engagement': {
           const { recomputeEngagement } = await import('../ai/memory/engagement');

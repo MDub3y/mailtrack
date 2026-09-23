@@ -19,6 +19,22 @@ const KIND_TO_RUN_KIND: Record<ProposalKind, RunKind> = {
   queue_threshold: 'judge', // placeholder until a queue-tuning run kind exists
 };
 
+// The one place a Label is written. Classification corrections
+// (ai/classify/corrections.ts) go through here too.
+export async function writeLabel(input: {
+  ownerId: mongoose.Types.ObjectId | string;
+  runKind: RunKind;
+  runId?: mongoose.Types.ObjectId;
+  proposalId?: mongoose.Types.ObjectId;
+  verdict: LabelVerdict;
+  before?: unknown;
+  after?: unknown;
+  confidence?: number;
+  labeledBy: mongoose.Types.ObjectId | 'policy';
+}): Promise<void> {
+  await Label.create(input);
+}
+
 // Applying a decided proposal is kind-specific (a memory item becomes
 // active, a rule becomes live). Kinds register an applier here so this
 // module never imports the code that owns each kind.

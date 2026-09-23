@@ -3,7 +3,7 @@ import { RUN_KINDS, RunKind } from './AgentRun';
 
 // A human judgement about something the system produced, stored so evals and
 // calibration grow from real usage (doc/05-iteration-2.md, Elevation 2).
-// Written only by ai/corrections.ts.
+// Written only through ai/corrections.ts (writeLabel).
 
 export type LabelVerdict = 'accepted' | 'rejected' | 'edited' | 'reverted' | 'human' | 'automated';
 
