@@ -5,6 +5,7 @@ import { User } from '../models/User';
 import { protect, AuthRequest } from '../middleware/auth';
 import { buildGoogleAuthUrl, connectGmailAccount } from '../services/gmailService';
 import { buildGoogleReadAuthUrl, connectGmailReadGrant, GmailReadMismatchError } from '../services/inboxService';
+import { scheduleInboxSync, enqueueInboxSyncNow } from '../queues/aiQueue';
 
 const router = Router();
 
@@ -171,6 +172,9 @@ router.get('/google/read/callback', async (req: Request, res: Response): Promise
   try {
     const decoded = jwt.verify(state, process.env.JWT_SECRET!) as { userId: string };
     await connectGmailReadGrant(decoded.userId, code);
+    // Polling starts now; the first pass is the bounded initial sync.
+    await scheduleInboxSync(decoded.userId);
+    await enqueueInboxSyncNow(decoded.userId);
     res.redirect(`${clientUrl}/triage?gmailRead=connected`);
   } catch (err) {
     console.error('Gmail read grant error:', err);

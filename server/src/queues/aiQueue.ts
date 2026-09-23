@@ -15,6 +15,7 @@ export type AiJob =
   | { name: 'voice-profile'; data: { ownerId: string } }
   | { name: 'investigate'; data: { ownerId: string } }
   | { name: 'reclassify'; data: { ownerId?: string } }
+  | { name: 'inbox-sync'; data: { ownerId: string; trigger: 'scheduled' | 'user' } }
   | { name: 'classify-messages'; data: { ownerId: string; ids?: string[] } }
   | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } };
 
@@ -127,6 +128,42 @@ export async function enqueueProcessMessage(inboundMessageId: string, trigger: '
   return true;
 }
 
+// Inbox polling: one repeatable job per opted-in user. The scheduler id is
+// stable, so upserting is idempotent and reconciliation at boot is safe
+// after a Redis loss. Gmail's push (Pub/Sub) is deferred (doc/04, ADR-20).
+export const INBOX_SYNC_EVERY_MS = () => Number(process.env.INBOX_SYNC_EVERY_MS || 180_000);
+
+export async function scheduleInboxSync(ownerId: string): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled()) return false;
+  await aiQueue().upsertJobScheduler(`inbox-sync:${ownerId}`, { every: INBOX_SYNC_EVERY_MS() }, {
+    name: 'inbox-sync', data: { ownerId, trigger: 'scheduled' }, opts: { attempts: 1, removeOnComplete: 50, removeOnFail: 50 },
+  });
+  return true;
+}
+
+export async function unscheduleInboxSync(ownerId: string): Promise<void> {
+  if (queueDisabled()) return;
+  await aiQueue().removeJobScheduler(`inbox-sync:${ownerId}`).catch(() => {});
+}
+
+// "Sync now": coalesced to one job per owner per 30 s.
+export async function enqueueInboxSyncNow(ownerId: string): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled()) return false;
+  await aiQueue().add('inbox-sync', { ownerId, trigger: 'user' }, {
+    jobId: `inbox-sync-now:${ownerId}:${Math.floor(Date.now() / 30_000)}`, attempts: 1, removeOnComplete: 50, removeOnFail: 50,
+  }).catch((err: Error) => { if (!/already exists/i.test(err.message)) throw err; });
+  return true;
+}
+
+// At boot: every user with an enabled read grant gets their schedule back.
+export async function reconcileInboxSyncSchedules(): Promise<number> {
+  if (!isAiEnabled() || queueDisabled()) return 0;
+  const { User } = await import('../models/User');
+  const users = await User.find({ 'gmailRead.syncEnabled': true }).select('_id').lean();
+  for (const u of users) await scheduleInboxSync(u._id.toString());
+  return users.length;
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -163,6 +200,11 @@ export function startAiWorker(): Worker<AiJobData> {
         case 'reclassify': {
           const { reclassifyOpens } = await import('../services/classifierService');
           return reclassifyOpens({ ownerId: (job.data as { ownerId?: string }).ownerId });
+        }
+        case 'inbox-sync': {
+          const { syncInbox } = await import('../services/inboxService');
+          const { ownerId, trigger } = job.data as Extract<AiJob, { name: 'inbox-sync' }>['data'];
+          return syncInbox(ownerId, { trigger });
         }
         case 'classify-messages': {
           const { classifyInboundMessages } = await import('../ai/classify');

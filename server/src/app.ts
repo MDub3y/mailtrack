@@ -11,6 +11,7 @@ import aiRoutes        from './routes/ai';
 import contactRoutes, { memoryRouter } from './routes/contacts';
 import queueRoutes     from './routes/queue';
 import integrityRoutes from './routes/integrity';
+import inboxRoutes     from './routes/inbox';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/contacts',  contactRoutes);
 app.use('/api/memory',    memoryRouter);
 app.use('/api/queue',     queueRoutes);
 app.use('/api/integrity', integrityRoutes);
+app.use('/api/inbox',     inboxRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
