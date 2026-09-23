@@ -337,3 +337,23 @@ export interface InboxSyncResult {
   sync?: { skipped?: string; mode?: string; fetched: number; created: number; capped: boolean; error?: string };
   classify?: { considered: number; classified: number; awaiting: number; auto: number; skipped: number; unclassified: number };
 }
+
+// ---------------------------------------------------------------------------
+// Digest (Phase 5)
+// ---------------------------------------------------------------------------
+
+export interface DigestContactRef { _id: string; address: string; displayName?: string }
+
+export interface DigestView {
+  since: string;
+  now: string;
+  firstLook: boolean;
+  contacts: Array<{ contact: DigestContactRef; signals: Array<{ type: string; count: number; last: string; detail?: string }>; total: number }>;
+  queue: { appeared: QueueItem[]; resolved: Array<{ key: string; rule: string }>; current: number };
+  autoAccepted: Array<{ proposalId: string; kind: string; content: string; contact?: DigestContactRef; decidedAt: string; memoryId?: string }>;
+  commitmentsDue: Array<{ memoryId: string; contact: DigestContactRef; content: string; by: 'sender' | 'contact' | 'unknown'; dueAt: string; overdue: boolean }>;
+  integrity: { rulesAccepted: Array<{ ruleId: string; pattern: string; patternType: string; verdict: string; at: string }>; corrections: number };
+  hasSomething: boolean;
+  text: string;
+  aiEnabled: boolean;
+}

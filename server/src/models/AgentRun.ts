@@ -12,11 +12,12 @@ export type RunKind =
   | 'draft_follow_up'
   | 'investigate'
   | 'judge'
+  | 'digest'
   | 'classify'   // cheap category pick by the extractor model
   | 'embed';     // embeddings for the classification tier
 
 export const RUN_KINDS: RunKind[] = [
-  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge', 'classify', 'embed',
+  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge', 'classify', 'embed', 'digest',
 ];
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';

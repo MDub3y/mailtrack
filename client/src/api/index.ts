@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -128,6 +128,14 @@ export const inboxApi = {
   deleteCategory: (key: string) => api.delete<{ deleted: boolean }>(`/inbox/categories/${key}`),
   addExample: (key: string, text: string) => api.post<CategoryView>(`/inbox/categories/${key}/examples`, { text }),
   removeExample: (key: string, index: number) => api.delete<CategoryView>(`/inbox/categories/${key}/examples/${index}`),
+};
+
+export const digestApi = {
+  get: (since?: string) => api.get<DigestView>(`/digest${since ? `?since=${encodeURIComponent(since)}` : ''}`),
+  seen: () => api.post<{ ok: boolean }>('/digest/seen', {}),
+  headline: (since?: string) => api.post<{ headline: string | null; runId?: string; message?: string }>('/digest/headline', { since }),
+  email: (data: { since?: string; headline?: string }) => api.post<{ sent: boolean; to: string; subject: string }>('/digest/email', data),
+  revert: (proposalId: string) => api.post(`/ai/proposals/${proposalId}/decide`, { decision: 'revert', reason: 'reverted from the digest' }),
 };
 
 export const bulkEmailApi = {

@@ -22,6 +22,9 @@ export interface IUser extends Document {
   // gmail.readonly, never widened from the send grant. Tokens are encrypted
   // at rest (utils/secrets) and hidden from queries unless selected.
   gmailRead?: IGmailReadGrant;
+  // Digest window: when the owner last looked, and the queue keys at that
+  // moment so the next digest can say what appeared and what resolved.
+  digest?: { lastSeenAt?: Date; queueKeys?: string[] };
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -67,6 +70,7 @@ const UserSchema = new Schema<IUser>({
   gmailAddress:       { type: String },
   organizationId:     { type: Schema.Types.ObjectId, ref: 'Organization' },
   gmailRead:          { type: GmailReadSchema },
+  digest:             { type: new Schema({ lastSeenAt: Date, queueKeys: { type: [String], default: [] } }, { _id: false }) },
 });
 
 UserSchema.pre('save', async function (next) {

@@ -20,7 +20,7 @@ export const Login = () => {
   const onSubmit = async (data: FormData) => {
     try {
       await login(data.email, data.password);
-      navigate('/sent');
+      navigate('/digest');
     } catch {
       setError('root', { message: 'Invalid email or password' });
     }

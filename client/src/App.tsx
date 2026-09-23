@@ -17,6 +17,7 @@ import { ContactDetail } from './pages/ContactDetail';
 import { Queue } from './pages/Queue';
 import { Integrity } from './pages/Integrity';
 import { Triage } from './pages/Triage';
+import { Digest } from './pages/Digest';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode; }) => {
   const { user, isLoading } = useAuth();
@@ -61,6 +62,21 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
 
           {/* Navigation Links */}
           <nav className="p-3 space-y-1">
+            <NavLink
+              to="/digest"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                  ? 'bg-[#ffffff] text-[#0f172a] border border-[#eaedf1] shadow-sm'
+                  : 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]'
+                }`
+              }
+            >
+              <svg className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Today
+            </NavLink>
+
             <NavLink
               to="/sent"
               className={({ isActive }) =>
@@ -353,6 +369,14 @@ const AppRoutes = () => (
               }
             />
             <Route
+              path="/digest"
+              element={
+                <ProtectedRoute>
+                  <Digest />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/runs"
               element={
                 <ProtectedRoute>
@@ -368,7 +392,7 @@ const AppRoutes = () => (
                 </ProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/sent" replace />} />
+            <Route path="*" element={<Navigate to="/digest" replace />} />
           </Routes>
         </Shell>
       }
