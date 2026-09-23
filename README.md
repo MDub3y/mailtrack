@@ -273,6 +273,14 @@ npm run eval:classification -- --backend llm  # + the cheap LLM backend on the f
 npm run eval:classification -- --backend all  # + embeddings, when the key's provider has them
 ```
 
+**Phase 5: the doors.** The landing page is now **Today**: what changed since you last looked, as a deterministic list. Signals from people per contact (automated opens left out), follow-through items that appeared or resolved, anything the policy remembered on its own with a revert button, commitments due in the next two days or overdue in either direction, rules that went live. One optional model call writes a two-sentence headline over that list, and only when there is something to say. "Email this to me" sends the digest through your own connected account to your own address, the one deliberate exception to the rule that you cannot send yourself email: no pixel, no record as a conversation. **Integrations** opens four doors. Signals in: a per-account webhook URL that any system knowing a contact's address can post to (a calendar tool, a form, a support desk), stored as an untrusted external event on that contact's timeline, idempotent and rate limited. Decisions out: your endpoints receive a signed envelope for every stored signal with its integrity verdict attached, and for queue items appearing or resolving; failures are counted and an endpoint pauses itself. Memory for other agents: a read-only MCP server with four tools (`contact_brief`, `contact_timeline`, `queue`, `search_commitments`) that any assistant you already use can call with a 90-day token, getting answers with provenance and never an email body from someone else. Memory that can leave: one markdown file per contact, or for all of them, with the brief, every item with its source and date, and the timeline.
+
+```bash
+claude mcp add --transport http mailtrack http://localhost:5000/api/mcp --header "Authorization: Bearer <token from Integrations>"
+```
+
+What this cannot do: nothing behind these doors can send email or change what is remembered. The MCP token is not stored, so it cannot be revoked on its own; rotating the server's JWT secret revokes every token. Outbound deliveries are best effort with three attempts; there is no replay of missed events.
+
 ---
 
 ## Security
