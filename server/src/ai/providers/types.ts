@@ -101,7 +101,7 @@ export interface EmbeddingResponse {
 // call time (a custom endpoint without /embeddings, for example). Callers
 // fall back to another backend and may cache the negative.
 export class UnsupportedCapabilityError extends Error {
-  constructor(public provider: ProviderName, public capability: 'embeddings', detail?: string) {
+  constructor(public provider: ProviderName, public capability: 'embeddings', public detail?: string) {
     super(`${provider} does not support ${capability}${detail ? `: ${detail}` : ''}`);
   }
 }
