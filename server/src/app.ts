@@ -14,6 +14,7 @@ import integrityRoutes from './routes/integrity';
 import inboxRoutes     from './routes/inbox';
 import digestRoutes    from './routes/digest';
 import integrationsRoutes, { signalsRouter } from './routes/integrations';
+import mcpRoutes       from './routes/mcp';
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/inbox',     inboxRoutes);
 app.use('/api/digest',    digestRoutes);
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/signals',   signalsRouter);
+app.use('/api/mcp',       mcpRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
