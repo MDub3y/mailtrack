@@ -281,6 +281,17 @@ claude mcp add --transport http mailtrack http://localhost:5000/api/mcp --header
 
 What this cannot do: nothing behind these doors can send email or change what is remembered. The MCP token is not stored, so it cannot be revoked on its own; rotating the server's JWT secret revokes every token. Outbound deliveries are best effort with three attempts; there is no replay of missed events.
 
+**Phase 6: replay, trust, clicks, sharing.** Every model call now keeps the exact prompt it was shown, so any run can be replayed under a different prompt, model or effort with nothing rebuilt, and compared with what it produced at the time and with what you decided afterwards: extraction replays are scored on whether the items you kept come back and the ones you rejected stay away, classification replays against your corrections, drafts by the same four-check judge on both versions. Prompt variants are files in `server/prompts/`; a change to a production prompt ships with the report. A weekly drift check (opt-in) replays a sample of each kind under the current prompt and lists the result on the Runs page. Earned autonomy is on by default: nothing is applied without asking until you have decided enough proposals of a reversible kind at the required rate, and the thresholds, the measured state per kind and a calibration table of confidence against your decisions are on the AI settings page. Links in outgoing mail go through a redirect, so a click is a signal with a verdict, and delivery-time link scanners are filtered the way image prescans are. Members of an organisation can opt in to see what colleagues know about the same address, attributed per person, read-only and reciprocal. Smaller things that were on the list: a free local classifier so no message stays unsorted for lack of a key, measured precision per fingerprint rule, a nightly investigation, revocable MCP tokens, a webhook delivery log with redelivery, Gmail push notifications with polling as the fallback, and receipts that say why an item was left out with "include and redraft".
+
+```bash
+cd server
+npm run replay -- --kind extract_memory --since 30d --limit 5              # this month's extractions under the current prompt
+npm run replay -- --kind draft_follow_up --variant draft.v2 --judge        # a variant prompt, judged on both sides
+npm run replay -- --drift                                                  # this week's sample of every kind
+```
+
+What this cannot do: replay a tool-using run with its tools (it runs on the stored first turn and says so); score kinds that have no labels yet beyond agreement with the original; verify Gmail push without a Pub/Sub topic of your own.
+
 ---
 
 ## Security
