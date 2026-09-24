@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView, TrustOverviewView } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView, TrustOverviewView, SharingStatus, SharedContactView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -59,6 +59,8 @@ export const organizationsApi = {
   join: (organizationId: string) =>
     api.post<Organization>('/organizations/join', { organizationId }),
   me: () => api.get<Organization>('/organizations/me'),
+  sharing: () => api.get<SharingStatus>('/organizations/me/sharing'),
+  setSharing: (enabled: boolean) => api.put<{ enabled: boolean }>('/organizations/me/sharing', { enabled }),
 };
 
 export const aiApi = {
@@ -85,6 +87,7 @@ export const contactsApi = {
   addMemory: (id: string, data: { kind: 'fact' | 'commitment' | 'preference'; content: string; structured?: Record<string, unknown> }) =>
     api.post<MemoryItem>(`/contacts/${id}/memory`, data),
   regenerateBrief: (id: string) => api.post<{ generated: boolean; text?: string; runId?: string; message?: string }>(`/contacts/${id}/brief`, {}),
+  shared: (id: string) => api.get<SharedContactView>(`/contacts/${id}/shared`),
   exportMarkdown: (id: string) => api.get<Blob>(`/contacts/${id}/export.md`, { responseType: 'blob' }),
   exportAll: () => api.get<Blob>('/contacts/export.md', { responseType: 'blob' }),
 };

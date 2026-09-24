@@ -116,6 +116,7 @@ export interface ContactSummary {
   stats: { sent: number; opened: number; replied: number; docViews: number };
   memoryCounts: { active: number; proposed: number };
   briefText?: string;
+  sharedWith?: number;
 }
 
 export interface SignalRow {
@@ -410,4 +411,21 @@ export interface TrustOverviewView {
   config: { enabled: boolean; minSample: number; minAcceptanceRate: number; minConfidence: number; source: { enabled: 'server' | 'owner' | 'default'; thresholds: 'server' | 'owner' | 'default' } };
   kinds: Array<{ kind: string; reversible: boolean; sample: number; acceptanceRate: number; earned: boolean; reason: string; autoAccepted30d: number; reverted30d: number; pending: number }>;
   calibration: Record<string, { buckets: Array<{ from: number; to: number; n: number; accepted: number; rate: number }>; suggestedMinConfidence?: number; n: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// Organisation-shared memory (Phase 6)
+// ---------------------------------------------------------------------------
+
+export interface SharingStatus { inOrganization: boolean; sharing: boolean; members: number; membersSharing: number }
+
+export interface SharedContactView {
+  sharing: boolean;
+  colleagues: Array<{
+    member: { _id: string; name: string; email: string };
+    contact: { _id: string; address: string; displayName?: string; stats: { sent: number; opened: number; replied: number; docViews: number }; lastSignalAt?: string };
+    brief?: { text: string; generatedAt: string };
+    memory: Array<{ _id: string; kind: string; content: string; confidence: number; source: string; createdAt: string; expiresAt?: string; evidence: Array<{ emailId?: string; quote?: string }> }>;
+    recentSignals: Array<{ type: string; at: string; verdict: string }>;
+  }>;
 }

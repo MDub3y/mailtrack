@@ -18,6 +18,8 @@ export interface IUser extends Document {
   // own SendGrid account (domain-authenticated by the enterprise at
   // onboarding) instead of needing to connect a personal Gmail account.
   organizationId?: mongoose.Types.ObjectId;
+  // Organisation-shared memory (F9): opt-in, reciprocal, read-only across members.
+  shareContactMemory?: boolean;
   // Gmail read grant (Phase 4): a second, separate consent for
   // gmail.readonly, never widened from the send grant. Tokens are encrypted
   // at rest (utils/secrets) and hidden from queries unless selected.
@@ -69,6 +71,7 @@ const UserSchema = new Schema<IUser>({
   googleTokenExpiry:  { type: Date, select: false },
   gmailAddress:       { type: String },
   organizationId:     { type: Schema.Types.ObjectId, ref: 'Organization' },
+  shareContactMemory: { type: Boolean, default: false },
   gmailRead:          { type: GmailReadSchema },
   digest:             { type: new Schema({ lastSeenAt: Date, queueKeys: { type: [String], default: [] } }, { _id: false }) },
 });

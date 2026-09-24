@@ -121,4 +121,27 @@ router.get('/me', async (req: AuthRequest, res: Response): Promise<void> => {
   }
 });
 
+// Organisation-shared memory (F9). Opt-in per member, reciprocal: a member
+// sees what sharing colleagues know about an address only while sharing
+// their own. Nothing is re-owned; items stay attributed to the member.
+// GET /api/organizations/me/sharing
+router.get('/me/sharing', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { sharingStatus } = await import('../services/sharedMemoryService');
+    res.json(await sharingStatus(req.userId!));
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+// PUT /api/organizations/me/sharing { enabled }
+router.put('/me/sharing', async (req: AuthRequest, res: Response): Promise<void> => {
+  const enabled = (req.body as { enabled?: unknown }).enabled;
+  if (typeof enabled !== 'boolean') { res.status(400).json({ message: 'enabled must be a boolean' }); return; }
+  try {
+    const { setSharing } = await import('../services/sharedMemoryService');
+    const r = await setSharing(req.userId!, enabled);
+    if (!r) { res.status(400).json({ message: 'Join an organisation first' }); return; }
+    res.json(r);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
 export default router;

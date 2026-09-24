@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ColleaguesSection } from '../components/ColleaguesSection';
 import { contactsApi, memoryApi, aiApi, downloadBlob } from '../api';
 import type { ContactDetailView, MemoryItem, MemoryKind } from '../types';
 import { EmailCompose, type ComposeInitial } from '../components/EmailCompose';
@@ -194,6 +195,8 @@ export const ContactDetail = () => {
               </div>
             </div>
           </section>
+
+          <ColleaguesSection contactId={contact._id} />
 
           <section>
             <h2 className="text-sm font-semibold text-[#0f172a] mb-2">Emails</h2>

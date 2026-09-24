@@ -5,6 +5,7 @@ import { Contact } from '../models/Contact';
 import { Memory, MemoryKind } from '../models/Memory';
 import { Signal } from '../models/Signal';
 import { buildQueue } from '../services/queueService';
+import { sharedContactView } from '../services/sharedMemoryService';
 
 // Memory that other agents can use (doc/05, Elevation 7): four read-only
 // tools over the same queries the app uses. No tool writes, no tool sends,
@@ -48,10 +49,13 @@ export function createMcpServer(ownerId: string): McpServer {
     const items = await Memory.find({ ownerId, subjectId: c._id, status: 'active', kind: { $in: KIND_ORDER } }).sort({ confidence: -1, createdAt: -1 }).lean();
     const grouped: Record<string, ReturnType<typeof memoryView>[]> = {};
     for (const k of KIND_ORDER) grouped[k] = items.filter((m) => m.kind === k).map((m) => memoryView(m as Parameters<typeof memoryView>[0]));
+    const shared = await sharedContactView(ownerId, c.address);
     return text({
       contact: { id: c._id.toString(), address: c.address, displayName: c.displayName ?? null, domain: c.domain, stats: c.stats, lastSignalAt: c.lastSignalAt?.toISOString() ?? null },
       brief: c.brief ? { text: c.brief.text, generatedAt: c.brief.generatedAt.toISOString(), citedMemoryIds: c.brief.citedMemoryIds.map(String) } : null,
       memory: grouped,
+      // What colleagues in the owner's organisation who share memory know about the same address, attributed per member.
+      ...(shared.colleagues.length ? { colleagues: shared.colleagues.map((col) => ({ member: col.member, brief: col.brief?.text ?? null, memory: col.memory.map((m) => ({ id: m._id, kind: m.kind, content: m.content, confidence: m.confidence, dueAt: m.expiresAt?.toISOString() ?? null })) })) } : {}),
     });
   });
 

@@ -8,6 +8,7 @@ import { Email } from '../models/Email';
 import { timeline } from '../services/signalService';
 import { addUserMemory, decideMemory } from '../ai/memory/policy';
 import { renderContactMarkdown, renderAllContactsMarkdown } from '../services/exportService';
+import { sharedContactView, sharedCounts } from '../services/sharedMemoryService';
 
 const router = Router();
 router.use(protect);
@@ -22,10 +23,12 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       { $group: { _id: '$subjectId', active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } }, proposed: { $sum: { $cond: [{ $eq: ['$status', 'proposed'] }, 1, 0] } } } },
     ]);
     const byId = new Map(counts.map((c) => [c._id.toString(), c]));
+    const shared = await sharedCounts(req.userId!, contacts.map((c) => c.address));
     res.json(contacts.map((c) => ({
       ...c,
       memoryCounts: (() => { const m = byId.get(c._id.toString()); return m ? { active: m.active, proposed: m.proposed } : { active: 0, proposed: 0 }; })(),
       briefText: c.brief?.text,
+      sharedWith: shared[c.address] ?? 0,
     })));
   } catch (err) {
     console.error('Contacts error:', err);
@@ -58,6 +61,19 @@ router.get('/:id/export.md', async (req: AuthRequest, res: Response): Promise<vo
     res.send(md);
   } catch (err) {
     console.error('Export error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/contacts/:id/shared — what sharing colleagues know about this address.
+router.get('/:id/shared', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) { res.status(404).json({ message: 'Contact not found' }); return; }
+    const contact = await Contact.findOne({ _id: req.params.id, ownerId: req.userId }).select('address').lean();
+    if (!contact) { res.status(404).json({ message: 'Contact not found' }); return; }
+    res.json(await sharedContactView(req.userId!, contact.address));
+  } catch (err) {
+    console.error('Shared contact error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
