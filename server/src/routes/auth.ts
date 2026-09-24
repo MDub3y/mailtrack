@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { User } from '../models/User';
 import { protect, AuthRequest } from '../middleware/auth';
 import { buildGoogleAuthUrl, connectGmailAccount } from '../services/gmailService';
-import { buildGoogleReadAuthUrl, connectGmailReadGrant, GmailReadMismatchError } from '../services/inboxService';
+import { buildGoogleReadAuthUrl, connectGmailReadGrant, GmailReadMismatchError, ensurePushWatch } from '../services/inboxService';
 import { scheduleInboxSync, enqueueInboxSyncNow } from '../queues/aiQueue';
 
 const router = Router();
@@ -175,6 +175,7 @@ router.get('/google/read/callback', async (req: Request, res: Response): Promise
     // Polling starts now; the first pass is the bounded initial sync.
     await scheduleInboxSync(decoded.userId);
     await enqueueInboxSyncNow(decoded.userId);
+    await ensurePushWatch(decoded.userId).catch((err) => console.error('Gmail push watch error:', err));
     res.redirect(`${clientUrl}/triage?gmailRead=connected`);
   } catch (err) {
     console.error('Gmail read grant error:', err);

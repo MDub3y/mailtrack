@@ -1,3 +1,4 @@
+import { Memory } from '../../models/Memory';
 import mongoose from 'mongoose';
 import { Email } from '../../models/Email';
 import { Contact, IContact } from '../../models/Contact';
@@ -40,16 +41,32 @@ export async function voiceSection(ownerId: mongoose.Types.ObjectId | string): P
 export async function memorySection(
   contact: IContact,
   rule?: QueueRule,
-  budgetTokens = 1200
+  budgetTokens = 1200,
+  opts: { includeIds?: string[] } = {}
 ): Promise<SectionInput & { items: Array<{ id: string; text: string }>; memory: MemoryLean[] }> {
   const kinds = PRIORITY_BY_RULE[rule ?? 'default'];
   const memory = await activeMemory(contact.ownerId, contact._id, { kinds });
   const items: Array<{ id: string; text: string }> = [];
+  // Items the user asked to include ("include this and redraft") go first,
+  // whatever their kind or cap, and may be proposed items.
+  const include = new Set((opts.includeIds ?? []).filter((id) => /^[a-f0-9]{24}$/i.test(id)));
+  if (include.size) {
+    const forced = await Memory.find({ _id: { $in: [...include] }, ownerId: contact.ownerId, subjectId: contact._id, status: { $in: ['active', 'proposed'] } }).lean();
+    for (const m of forced) items.push({ id: m._id.toString(), text: renderMemoryLine(m as unknown as MemoryLean) });
+  }
   if (contact.brief?.text) {
     items.push({ id: `brief:${contact._id}`, text: `Brief: ${contact.brief.text}` });
   }
-  for (const m of memory) items.push({ id: m._id.toString(), text: renderMemoryLine(m) });
-  return { name: 'memory', budgetTokens, stable: false, items, memory };
+  for (const m of memory) if (!include.has(m._id.toString())) items.push({ id: m._id.toString(), text: renderMemoryLine(m) });
+  // What was not offered, and why: proposed items waiting for a decision,
+  // and active items beyond the per-kind caps.
+  const offered = new Set(items.map((i) => i.id));
+  const excluded: NonNullable<SectionInput['excluded']> = [];
+  const proposed = await Memory.find({ ownerId: contact.ownerId, subjectId: contact._id, status: 'proposed', kind: { $in: ['fact', 'commitment', 'preference'] } }).select('content').limit(20).lean();
+  for (const m of proposed) if (!offered.has(m._id.toString())) excluded.push({ id: m._id.toString(), reason: 'proposed_not_accepted', label: m.content.slice(0, 120) });
+  const overCap = await Memory.find({ ownerId: contact.ownerId, subjectId: contact._id, status: 'active', kind: { $in: kinds }, _id: { $nin: [...offered].filter((id) => /^[a-f0-9]{24}$/i.test(id)) } }).select('content').limit(20).lean();
+  for (const m of overCap) excluded.push({ id: m._id.toString(), reason: 'kind_cap', label: m.content.slice(0, 120) });
+  return { name: 'memory', budgetTokens, stable: false, items, memory, excluded };
 }
 
 export interface ThreadEmail {

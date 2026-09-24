@@ -154,6 +154,7 @@ export interface DraftResult {
   provider: string;
   model: string;
   degraded: string[];
+  request?: { contactId: string; emailId?: string; rule?: QueueRule; reason?: string; includeMemoryIds?: string[] };
   usedMemory: Array<{ id: string; text: string }>;
   usedEmails: Array<{ id: string; subject: string; date: string }>;
   gaps: string[];
@@ -208,11 +209,14 @@ export interface OpenSignalRow {
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
 
+export interface ReceiptDrop { id: string; reason: 'budget' | 'proposed_not_accepted' | 'low_confidence' | 'superseded' | 'kind_cap'; label?: string }
+
 export interface ReceiptSection {
   name: string;
   tokens: number;
   itemIds: string[];
   droppedItemIds: string[];
+  dropped?: ReceiptDrop[];
   cacheBoundary: boolean;
 }
 

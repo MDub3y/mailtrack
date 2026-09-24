@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { protect, AuthRequest } from '../middleware/auth';
@@ -7,7 +7,7 @@ import { Category, CATEGORY_KEY_RE } from '../models/Category';
 import { isAiEnabled } from '../ai/config';
 import { NoProviderKeyError } from '../ai/providers';
 import { BudgetExceededError, RunFailedError } from '../ai/runAgent';
-import { inboxStatus, syncInbox, revokeGmailReadGrant, setInboxSyncEnabled } from '../services/inboxService';
+import { inboxStatus, syncInbox, revokeGmailReadGrant, setInboxSyncEnabled, parsePushNotification, userForPushAddress, pushConfigured } from '../services/inboxService';
 import { enqueueInboxSyncNow, enqueueProcessMessage, enqueueClassify, scheduleInboxSync, unscheduleInboxSync } from '../queues/aiQueue';
 import { loadCategories, createCategory, updateCategory, addExample } from '../ai/classify/categories';
 import { classifyInboundMessages, deleteCategoryAndReassign, CLASSIFY_BATCH_MAX } from '../ai/classify';
@@ -16,6 +16,24 @@ import { correctCategory } from '../ai/classify/corrections';
 
 // The Triage page's API (Phase 4). Everything is scoped to the owner; the
 // model only runs where a policy or an explicit click allows it.
+
+// Pub/Sub push endpoint (public; the shared token in the query is the
+// check). Acknowledges everything with 204 so Pub/Sub stops retrying, and
+// only ever triggers the ordinary sync for the address named.
+export const inboxPushRouter = Router();
+inboxPushRouter.post('/push', async (req: Request, res: Response): Promise<void> => {
+  if (!pushConfigured() || req.query.token !== process.env.GMAIL_PUSH_TOKEN) { res.status(404).end(); return; }
+  const n = parsePushNotification(req.body);
+  if (!n) { res.status(204).end(); return; }
+  try {
+    const userId = await userForPushAddress(n.emailAddress);
+    if (userId && !(await enqueueInboxSyncNow(userId))) {
+      const sync = await syncInbox(userId, { trigger: 'user' });
+      for (let i = 0; i < sync.newIds.length; i += CLASSIFY_BATCH_MAX) await classifyInboundMessages(userId, { ids: sync.newIds.slice(i, i + CLASSIFY_BATCH_MAX) });
+    }
+  } catch (err) { console.error('[inbox push]', err); }
+  res.status(204).end();
+});
 
 const router = Router();
 router.use(protect);

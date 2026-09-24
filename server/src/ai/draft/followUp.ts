@@ -51,6 +51,7 @@ export interface DraftRequest {
   emailId?: string;         // the email this follows
   rule?: QueueRule;
   reason?: string;          // the queue's reason string, or the user's own words
+  includeMemoryIds?: string[]; // "include this and redraft": forced into context first
 }
 
 export interface DraftResult {
@@ -61,6 +62,7 @@ export interface DraftResult {
   provider: string;
   model: string;
   degraded: string[];
+  request: { contactId: string; emailId?: string; rule?: QueueRule; reason?: string; includeMemoryIds?: string[] };
   usedMemory: Array<{ id: string; text: string }>;
   usedEmails: Array<{ id: string; subject: string; date: string }>;
   gaps: string[];
@@ -72,7 +74,7 @@ export async function buildDraftContext(req: DraftRequest): Promise<{ ctx: Built
 
   const [voice, memory, thread] = await Promise.all([
     voiceSection(req.ownerId),
-    memorySection(contact, req.rule),
+    memorySection(contact, req.rule, undefined, { includeIds: req.includeMemoryIds }),
     threadSection(contact),
   ]);
   const repliedCount = await Signal.countDocuments({ ownerId: req.ownerId, contactId: contact._id, type: 'reply' });
@@ -178,6 +180,7 @@ export async function draftFollowUp(req: DraftRequest): Promise<DraftResult> {
     provider: result.provider,
     model: result.model,
     degraded: result.degraded,
+    request: { contactId: req.contactId.toString(), emailId: req.emailId, rule: req.rule, reason: req.reason, includeMemoryIds: req.includeMemoryIds },
     usedMemory: result.output.usedMemoryIds.map((id) => memoryById.get(id) ?? { id, text: id }),
     usedEmails: result.output.usedEmailIds.map((id) => threadById.get(id) ?? { id, subject: id, date: '' }),
     gaps,

@@ -29,6 +29,9 @@ export interface SectionInput {
   // Either a single block of text, or items packed greedily under the budget.
   text?: string;
   items?: Array<{ id: string; text: string }>;
+  // Items the loader chose not to offer at all, with the reason, so the
+  // receipt can say why (proposed, superseded, over a per-kind cap).
+  excluded?: Array<{ id: string; reason: 'proposed_not_accepted' | 'low_confidence' | 'superseded' | 'kind_cap'; label?: string }>;
 }
 
 export interface BuiltSection extends IReceiptSection {
@@ -94,8 +97,8 @@ export class ContextBuilder {
     ];
 
     const receipt: IContextReceipt = {
-      sections: built.map(({ name, tokens, itemIds, droppedItemIds, cacheBoundary }) => ({
-        name, tokens, itemIds, droppedItemIds, cacheBoundary,
+      sections: built.map(({ name, tokens, itemIds, droppedItemIds, dropped, cacheBoundary }) => ({
+        name, tokens, itemIds, droppedItemIds, dropped, cacheBoundary,
       })),
       totalInputTokens: built.reduce((n, s) => n + s.tokens, 0),
       exact: false,
@@ -111,7 +114,8 @@ export class ContextBuilder {
       stable: s.stable,
       cacheBoundary: Boolean(s.cacheBoundary),
       itemIds: [] as string[],
-      droppedItemIds: [] as string[],
+      droppedItemIds: (s.excluded ?? []).map((e) => e.id),
+      dropped: (s.excluded ?? []).map((e) => ({ id: e.id, reason: e.reason, label: e.label })) as IReceiptSection['dropped'],
     };
 
     if (s.text !== undefined) {
@@ -124,6 +128,7 @@ export class ContextBuilder {
       const cost = estimateTokens(item.text) + 1;
       if (used + cost > s.budgetTokens) {
         base.droppedItemIds.push(item.id);
+        base.dropped!.push({ id: item.id, reason: 'budget', label: item.text.replace(/^\[[a-f0-9]{24}\]\s*/i, '').slice(0, 120) });
         continue;
       }
       lines.push(item.text);

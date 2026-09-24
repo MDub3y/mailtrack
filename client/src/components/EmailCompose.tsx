@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
-import { emailsApi, documentsApi } from '../api';
+import { emailsApi, documentsApi, aiApi } from '../api';
 import type { Email, PlatformUser, DocumentAttachment, DraftResult } from '../types';
 
 interface FormData {
@@ -35,6 +35,25 @@ export const EmailCompose = ({ onSent, onClose, initial }: Props) => {
     formState: { isSubmitting },
     reset,
   } = useForm<FormData>({ defaultValues: { to: initial?.to ?? '', subject: initial?.subject ?? '', body: initial?.body ?? '' } });
+  // "Include this and redraft" (doc/05, Elevation 5): the user becomes the
+  // context engineer for the item that matters; the draft is regenerated
+  // with that item forced into context and the receipt replaced.
+  const [draft, setDraft] = useState<DraftResult | undefined>(initial?.draft);
+  const [redrafting, setRedrafting] = useState(false);
+  const [redraftMsg, setRedraftMsg] = useState('');
+  const draftReq = draft?.request;
+  const redraft = async (memoryId: string) => {
+    if (!draftReq) return;
+    setRedrafting(true); setRedraftMsg('');
+    try {
+      const res = await aiApi.draft({ ...draftReq, includeMemoryIds: [...new Set([...(draftReq.includeMemoryIds ?? []), memoryId])] });
+      setDraft(res.data);
+      setValue('subject', res.data.draft.subject);
+      setValue('body', res.data.draft.body);
+    } catch (err) {
+      setRedraftMsg((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not redraft.');
+    } finally { setRedrafting(false); }
+  };
   const [showReceipt, setShowReceipt] = useState(true);
   const [suggestions, setSuggestions] = useState<PlatformUser[]>([]);
   const [sendError, setSendError] = useState('');
@@ -181,14 +200,14 @@ export const EmailCompose = ({ onSent, onClose, initial }: Props) => {
             />
           </div>
 
-          {initial?.draft && (
+          {draft && (
             <div className="rounded-lg border border-[#eaedf1] bg-[#f8fafc] text-[11px]">
               <button type="button" onClick={() => setShowReceipt((v) => !v)} className="w-full px-3 py-2 flex items-center justify-between text-left">
                 <span className="font-semibold text-[#0f172a]">What the model used</span>
                 <span className="text-[#64748b]">
-                  {initial.draft.model}
-                  {initial.draft.receipt.cacheReadTokens > 0 && ` · ${initial.draft.receipt.cacheReadTokens} tok cached`}
-                  {initial.draft.degraded.length > 0 && ` · without ${initial.draft.degraded.join(', ')}`}
+                  {draft.model}
+                  {draft.receipt.cacheReadTokens > 0 && ` · ${draft.receipt.cacheReadTokens} tok cached`}
+                  {draft.degraded.length > 0 && ` · without ${draft.degraded.join(', ')}`}
                   {' '}{showReceipt ? '▾' : '▸'}
                 </span>
               </button>
@@ -196,28 +215,43 @@ export const EmailCompose = ({ onSent, onClose, initial }: Props) => {
                 <div className="px-3 pb-3 space-y-2">
                   <div>
                     <div className="text-[#64748b] mb-1">Memory relied on</div>
-                    {initial.draft.usedMemory.length === 0
+                    {draft.usedMemory.length === 0
                       ? <div className="text-[#94a3b8]">None. The draft is general.</div>
-                      : <ul className="space-y-0.5">{initial.draft.usedMemory.map((m) => <li key={m.id} className="text-[#0f172a]">{m.text.replace(/^\[[a-f0-9]{24}\]\s*/i, '')}</li>)}</ul>}
+                      : <ul className="space-y-0.5">{draft.usedMemory.map((m) => <li key={m.id} className="text-[#0f172a]">{m.text.replace(/^\[[a-f0-9]{24}\]\s*/i, '')}</li>)}</ul>}
                   </div>
                   <div>
                     <div className="text-[#64748b] mb-1">Emails relied on</div>
-                    {initial.draft.usedEmails.length === 0
+                    {draft.usedEmails.length === 0
                       ? <div className="text-[#94a3b8]">None.</div>
-                      : <ul className="space-y-0.5">{initial.draft.usedEmails.map((e) => <li key={e.id}><Link to={`/sent?email=${e.id}`} className="underline text-[#0f172a]">{e.date} {e.subject}</Link></li>)}</ul>}
+                      : <ul className="space-y-0.5">{draft.usedEmails.map((e) => <li key={e.id}><Link to={`/sent?email=${e.id}`} className="underline text-[#0f172a]">{e.date} {e.subject}</Link></li>)}</ul>}
                   </div>
-                  {initial.draft.gaps.length > 0 && (
+                  {draft.gaps.length > 0 && (
                     <div>
                       <div className="text-[#92400e] mb-1">Before you send</div>
-                      <ul className="space-y-0.5">{initial.draft.gaps.map((g, i) => <li key={i} className="text-[#0f172a]">{g}</li>)}</ul>
+                      <ul className="space-y-0.5">{draft.gaps.map((g, i) => <li key={i} className="text-[#0f172a]">{g}</li>)}</ul>
                     </div>
                   )}
                   {(() => {
-                    const dropped = initial.draft.receipt.sections.flatMap((s) => s.droppedItemIds);
-                    return dropped.length > 0 ? <div className="text-[#64748b]">{dropped.length} item{dropped.length === 1 ? '' : 's'} left out for space.</div> : null;
+                    const dropped = draft.receipt.sections.flatMap((s) => s.dropped ?? s.droppedItemIds.map((id) => ({ id, reason: 'budget' as const })));
+                    if (dropped.length === 0) return null;
+                    const REASON: Record<string, string> = { budget: 'left out for space', proposed_not_accepted: 'proposed, not yet accepted', kind_cap: 'over the per-kind cap', low_confidence: 'low confidence', superseded: 'superseded' };
+                    return (
+                      <div>
+                        <div className="text-[#64748b] mb-1">Left out</div>
+                        <ul className="space-y-0.5">
+                          {dropped.slice(0, 12).map((d) => (
+                            <li key={d.id} className="flex items-center gap-2 text-[#0f172a]">
+                              <span className="flex-1 min-w-0 truncate">{d.label ?? d.id} <span className="text-[#94a3b8]">· {REASON[d.reason] ?? d.reason}</span></span>
+                              {/^[a-f0-9]{24}$/i.test(d.id) && draftReq && <button type="button" className="text-[10px] underline text-[#0f172a] shrink-0" disabled={redrafting} onClick={() => redraft(d.id)}>include and redraft</button>}
+                            </li>
+                          ))}
+                        </ul>
+                        {redraftMsg && <div className="text-[#991b1b] mt-1">{redraftMsg}</div>}
+                      </div>
+                    );
                   })()}
                   <div className="text-[#64748b]">
-                    {initial.draft.receipt.totalInputTokens} input tokens{initial.draft.receipt.exact ? '' : ' (estimate)'} · <Link to="/runs" className="underline">open run</Link>
+                    {draft.receipt.totalInputTokens} input tokens{draft.receipt.exact ? '' : ' (estimate)'} · <Link to="/runs" className="underline">open run</Link>
                   </div>
                 </div>
               )}

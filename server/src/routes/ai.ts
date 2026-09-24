@@ -158,6 +158,7 @@ const DraftBody = z.object({
   emailId: z.string().length(24).optional(),
   rule: z.enum(['unopened', 'opened_no_reply', 'document_interest', 'your_commitment_due', 'their_commitment_due', 'renewed_interest']).optional(),
   reason: z.string().max(300).optional(),
+  includeMemoryIds: z.array(z.string().length(24)).max(10).optional(),
 });
 
 // POST /api/ai/draft — a follow-up draft with a receipt. Nothing is sent.

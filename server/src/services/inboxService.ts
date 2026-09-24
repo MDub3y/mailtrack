@@ -434,6 +434,7 @@ export async function syncInbox(userId: string, opts: { trigger?: 'scheduled' | 
     }
     patch['gmailRead.lastSyncAt'] = new Date();
     patch['gmailRead.lastSyncError'] = undefined;
+    if (pushConfigured()) await ensurePushWatch(userId).catch((err) => { patch['gmailRead.lastSyncError'] = `push watch: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500); });
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err);
     patch['gmailRead.lastSyncError'] = result.error.slice(0, 500);
@@ -464,4 +465,46 @@ export async function inboxStatus(userId: string): Promise<{
     address: g?.address, syncEnabled: g?.syncEnabled, initialSyncDone: g?.initialSyncDone, lastSyncAt: g?.lastSyncAt, lastSyncError: g?.lastSyncError, grantedAt: g?.grantedAt,
     counts: { total, unclassified, awaiting, processed },
   };
+}
+
+// ---------------------------------------------------------------- push (Pub/Sub)
+
+// Gmail push: with GMAIL_PUSH_TOPIC set (a Pub/Sub topic Gmail may publish
+// to, with a push subscription pointing at /api/inbox/push?token=...), each
+// grant registers a watch on INBOX and the sync job renews it a day before
+// it expires. A notification only says "something changed for this
+// address"; the existing history sync does the reading. Polling stays as
+// the fallback, so a missed notification costs latency, not mail.
+export function pushConfigured(): boolean {
+  return !!process.env.GMAIL_PUSH_TOPIC && !!process.env.GMAIL_PUSH_TOKEN;
+}
+
+export async function ensurePushWatch(userId: string, opts: { force?: boolean } = {}): Promise<{ registered: boolean; expiration?: Date; reason?: string }> {
+  if (!pushConfigured()) return { registered: false, reason: 'push not configured' };
+  const user = await User.findById(userId).select('gmailRead');
+  const g = user?.gmailRead;
+  if (!g) return { registered: false, reason: 'not connected' };
+  const renewBefore = new Date(Date.now() + 86_400_000);
+  if (!opts.force && g.watchExpiration && g.watchExpiration > renewBefore) return { registered: true, expiration: g.watchExpiration };
+  const client = makeGmailClient(await getValidReadAccessToken(userId));
+  const r = await client.watch(process.env.GMAIL_PUSH_TOPIC!, ['INBOX']);
+  const expiration = new Date(Number(r.expiration));
+  await User.updateOne({ _id: userId }, { $set: { 'gmailRead.watchExpiration': expiration } });
+  return { registered: true, expiration };
+}
+
+// The Pub/Sub push body: { message: { data: base64({ emailAddress, historyId }) } }.
+export function parsePushNotification(body: unknown): { emailAddress: string; historyId?: string } | null {
+  const data = (body as { message?: { data?: string } } | undefined)?.message?.data;
+  if (!data) return null;
+  try {
+    const json = JSON.parse(Buffer.from(data, 'base64').toString('utf8')) as { emailAddress?: string; historyId?: string | number };
+    if (!json.emailAddress) return null;
+    return { emailAddress: json.emailAddress.toLowerCase(), historyId: json.historyId !== undefined ? String(json.historyId) : undefined };
+  } catch { return null; }
+}
+
+export async function userForPushAddress(emailAddress: string): Promise<string | null> {
+  const u = await User.findOne({ 'gmailRead.address': emailAddress.toLowerCase(), 'gmailRead.syncEnabled': true }).select('_id').lean();
+  return u ? u._id.toString() : null;
 }

@@ -38,6 +38,10 @@ export interface GmailClient {
   listMessages(q: { q?: string; labelIds?: string[]; maxResults?: number; pageToken?: string }): Promise<{ messages: GmailMessageRef[]; nextPageToken?: string; resultSizeEstimate?: number }>;
   getMessage(id: string, format?: 'full' | 'metadata' | 'minimal'): Promise<GmailMessage>;
   listHistory(q: { startHistoryId: string; labelId?: string; historyTypes?: string[]; maxResults?: number; pageToken?: string }): Promise<{ history: GmailHistoryRecord[]; historyId?: string; nextPageToken?: string }>;
+  // Push notifications through a Pub/Sub topic (users.watch); expires in
+  // about seven days and must be renewed.
+  watch(topicName: string, labelIds?: string[]): Promise<{ historyId: string; expiration: string }>;
+  stop(): Promise<void>;
 }
 
 export class GmailApiError extends Error {
@@ -71,6 +75,15 @@ export function gmailClientFor(accessToken: string): GmailClient {
       return { messages: r.messages ?? [], nextPageToken: r.nextPageToken, resultSizeEstimate: r.resultSizeEstimate };
     },
     getMessage: (id, format = 'full') => gmailFetch(accessToken, `/messages/${encodeURIComponent(id)}`, { format }),
+    async watch(topicName, labelIds = ['INBOX']) {
+      const res = await fetch(`${GMAIL_BASE}/watch`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ topicName, labelIds, labelFilterBehavior: 'INCLUDE' }) });
+      if (!res.ok) throw new GmailApiError(res.status, `Gmail /watch failed (${res.status}): ${(await res.text().catch(() => '')).slice(0, 300)}`);
+      return (await res.json()) as { historyId: string; expiration: string };
+    },
+    async stop() {
+      const res = await fetch(`${GMAIL_BASE}/stop`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok && res.status !== 404) throw new GmailApiError(res.status, `Gmail /stop failed (${res.status})`);
+    },
     async listHistory(q) {
       const r = await gmailFetch<{ history?: GmailHistoryRecord[]; historyId?: string; nextPageToken?: string }>(accessToken, '/history', {
         startHistoryId: q.startHistoryId, labelId: q.labelId, historyTypes: q.historyTypes, maxResults: q.maxResults, pageToken: q.pageToken,

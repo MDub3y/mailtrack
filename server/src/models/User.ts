@@ -43,6 +43,8 @@ export interface IGmailReadGrant {
   lastSyncAt?: Date;
   lastSyncError?: string;
   syncLockUntil?: Date;
+  // Push (Pub/Sub) watch, when GMAIL_PUSH_TOPIC is configured; renewed by the sync job before it expires.
+  watchExpiration?: Date;
 }
 
 const GmailReadSchema = new Schema<IGmailReadGrant>({
@@ -58,6 +60,7 @@ const GmailReadSchema = new Schema<IGmailReadGrant>({
   lastSyncAt:      { type: Date },
   lastSyncError:   { type: String },
   syncLockUntil:   { type: Date },
+  watchExpiration: { type: Date },
 }, { _id: false });
 
 const UserSchema = new Schema<IUser>({

@@ -23,11 +23,15 @@ export const RUN_KINDS: RunKind[] = [
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
 
+export type DropReason = 'budget' | 'proposed_not_accepted' | 'low_confidence' | 'superseded' | 'kind_cap';
+
 export interface IReceiptSection {
   name: string;
   tokens: number;          // estimate while packing; replaced by the exact count when available
   itemIds: string[];
   droppedItemIds: string[];
+  // Why each dropped item was left out (Phase 6): the same ids as above with a reason.
+  dropped?: Array<{ id: string; reason: DropReason; label?: string }>;
   cacheBoundary: boolean;
 }
 
@@ -90,6 +94,7 @@ const ReceiptSectionSchema = new Schema<IReceiptSection>(
     tokens: Number,
     itemIds: [String],
     droppedItemIds: [String],
+    dropped: { type: [new Schema({ id: String, reason: String, label: String }, { _id: false })], default: undefined },
     cacheBoundary: Boolean,
   },
   { _id: false }

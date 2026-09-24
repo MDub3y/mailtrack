@@ -54,6 +54,7 @@ export interface FakeGmail extends GmailClient {
   profile: { emailAddress: string; historyId: string };
   calls: Array<{ method: string; args: unknown }>;
   historyStatus: number | null; // when set, listHistory throws with this status
+  watches: Array<{ topicName: string; labelIds?: string[] }>;
   add(spec: MessageSpec, opts?: { history?: boolean }): GmailMessage;
 }
 
@@ -64,6 +65,7 @@ export function fakeGmail(address = 'me@gmail.com', opts: { historyId?: string }
     profile: { emailAddress: address, historyId: opts.historyId ?? '1000' },
     calls: [],
     historyStatus: null,
+    watches: [],
     add(spec, o = {}) {
       const m = gmailMessage(spec);
       self.messages.set(m.id, m);
@@ -75,6 +77,12 @@ export function fakeGmail(address = 'me@gmail.com', opts: { historyId?: string }
       }
       return m;
     },
+    async watch(topicName, labelIds) {
+      self.calls.push({ method: 'watch', args: { topicName, labelIds } });
+      self.watches.push({ topicName, labelIds });
+      return { historyId: self.profile.historyId, expiration: String(Date.now() + 7 * 86_400_000) };
+    },
+    async stop() { self.calls.push({ method: 'stop', args: null }); },
     async getProfile() {
       self.calls.push({ method: 'getProfile', args: null });
       return { ...self.profile };
