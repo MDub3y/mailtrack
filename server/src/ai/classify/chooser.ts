@@ -1,6 +1,7 @@
 import { resolveProvider, UnsupportedCapabilityError } from '../providers';
 import { embeddingsBackend, markEmbeddingsUnsupported } from './embeddings';
 import { llmBackend } from './llm';
+import { localBackend } from './local';
 import { CategoryDef, ClassifiableMessage, ClassificationResult, ClassifierBackend } from './types';
 
 // Picks the cheapest backend the owner's keys can serve. Embeddings when the
@@ -22,7 +23,11 @@ export function __setExtraBackendsForTests(backends: ClassifierBackend[]): void 
 
 export async function pickBackend(ownerId: string): Promise<BackendChoice> {
   const reasons: string[] = [];
-  for (const b of [...extraBackends, embeddingsBackend, llmBackend]) {
+  // Order: test/extension backends, then embeddings, then the LLM, then the
+  // free local term-frequency backend so nothing stays unclassified for lack
+  // of a key. AI_CLASSIFY_LOCAL_FIRST=true puts the local one first.
+  const order = process.env.AI_CLASSIFY_LOCAL_FIRST === 'true' ? [...extraBackends, localBackend, embeddingsBackend, llmBackend] : [...extraBackends, embeddingsBackend, llmBackend, localBackend];
+  for (const b of order) {
     const a = await b.available(ownerId);
     if (a.ok) return { backend: b, modelRef: a.modelRef, reasons };
     reasons.push(`${b.name}: ${a.reason}`);

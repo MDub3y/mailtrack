@@ -26,6 +26,7 @@ const RuleRow = ({ r, pending, onDecide, busy }: { r: FingerprintRuleView; pendi
             <span>{r.origin}</span>
             <span>confidence {pct(r.confidence)}</span>
             {r.evidence.length > 0 && <span>{r.evidence.length} evidence event{r.evidence.length === 1 ? '' : 's'}</span>}
+            {r.measured && <span title={`measured on the labelled events, ${new Date(r.measured.at).toLocaleDateString()}`}>measured: precision {pct(r.measured.precision)} · recall {pct(r.measured.recall)} · matched {r.measured.n} labelled</span>}
             {pe && <span>would reclassify {pe.wouldReclassify} · agrees with {pe.matchesLabelled.agree} label{pe.matchesLabelled.agree === 1 ? '' : 's'}, disagrees with {pe.matchesLabelled.disagree}</span>}
             {pe?.modelDisagreed && pe.modelReported && <span className="text-[#92400e]">model claimed {pe.modelReported.wouldReclassify} / {pe.modelReported.matchesLabelled.agree} / {pe.modelReported.matchesLabelled.disagree}; server recomputed</span>}
             {r.proposedByRunId && <Link to="/runs" className="underline">run</Link>}

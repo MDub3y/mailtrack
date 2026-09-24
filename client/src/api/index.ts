@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView, TrustOverviewView, SharingStatus, SharedContactView } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView, TrustOverviewView, SharingStatus, SharedContactView, ApiTokenView, WebhookDeliveryView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -109,6 +109,11 @@ export const integrationsApi = {
   removeOutbound: (id: string) => api.delete<{ deleted: boolean }>(`/integrations/outbound/${id}`),
   testOutbound: (id: string) => api.post<{ ok: boolean; status?: number; error?: string }>(`/integrations/outbound/${id}/test`, {}).catch((err) => { const d = err?.response?.data; if (d && typeof d.ok === 'boolean') return { data: d as { ok: boolean; status?: number; error?: string } }; throw err; }),
   mcpToken: () => api.post<{ token: string; expiresInDays: number; scope: string }>('/integrations/mcp-token', {}),
+  listTokens: () => api.get<ApiTokenView[]>('/integrations/tokens'),
+  createToken: (name: string) => api.post<{ _id: string; name: string; prefix: string; token: string }>('/integrations/tokens', { name }),
+  revokeToken: (id: string) => api.delete<{ revoked: boolean }>(`/integrations/tokens/${id}`),
+  deliveries: (endpointId: string) => api.get<WebhookDeliveryView[]>(`/integrations/outbound/${endpointId}/deliveries`),
+  redeliver: (endpointId: string, days = 7) => api.post<{ attempted: number; ok: number }>(`/integrations/outbound/${endpointId}/redeliver`, { days }),
 };
 
 export const memoryApi = {

@@ -175,16 +175,19 @@ test('llm backend: categories in the stable system block, messages untrusted, in
   assert.ok(rendered.length < 1500);
 });
 
-test('chooser: embeddings when served, llm when the provider has no embed, none when no keys; a runtime unsupported is cached and retried with the llm', async () => {
+test('chooser: embeddings when served, llm when the provider has no embed, local when no keys; a runtime unsupported is cached and retried with the llm', async () => {
   await ensureDefaultCategories(owner);
 
-  // No override and no keys: nothing can classify, and both reasons are given.
+  // No override and no keys: the free local backend is the last resort, with both reasons given.
   const none = await pickBackend(ownerId);
-  assert.equal(none.backend, null);
+  assert.equal(none.backend?.name, 'local');
   assert.equal(none.reasons.length, 2);
   assert.match(none.reasons[0], /^embeddings: no key/);
   assert.match(none.reasons[1], /^llm: no key/);
-  assert.deepEqual(await classifyWithBestBackend(ownerId, await defs(), [msg('m1', 's', 't')]), { results: [], backend: null, reasons: none.reasons });
+  const viaLocal = await classifyWithBestBackend(ownerId, await defs(), [msg('m1', 'Your receipt', 'receipt for order, invoice attached')]);
+  assert.equal(viaLocal.backend, 'local');
+  assert.equal(viaLocal.results[0].categoryKey, 'transactional');
+  assert.deepEqual(viaLocal.reasons, none.reasons);
 
   // A provider without an embed path: the llm is chosen, with the reason.
   __setProviderForTests(fakeProvider([], { name: 'anthropic' }));

@@ -66,7 +66,7 @@ export function compileRule(r: Pick<IFingerprintRule, 'patternType' | 'pattern' 
   return null;
 }
 
-function matches(rule: CompiledRule, input: ClassifyInput): boolean {
+export function matches(rule: CompiledRule, input: ClassifyInput): boolean {
   if (rule.signalType !== (input.signalType ?? 'open')) return false;
   if (rule.regex) return rule.regex.test(input.userAgent || '');
   if (rule.floorMs !== undefined) return input.msSinceCreated >= 0 && input.msSinceCreated < rule.floorMs;
@@ -187,4 +187,38 @@ export async function reclassifyOpens(opts: { ownerId?: string; limit?: number }
   }
   for (const id of touched) await syncEmailFromSignals(id);
   return { scanned, changed, emailsTouched: touched.size };
+}
+
+// Measured precision and recall per active rule over the labelled events
+// (Phase 6): precision = labelled events the rule matched that carry its
+// verdict / all labelled events it matched; recall = of the labelled events
+// with that verdict, how many it matched. Stored on the rule with the date.
+export interface LabelledForRules { userAgent: string; ip?: string; msSinceCreated: number; label: 'human' | 'automated' }
+
+export function measureRule(rule: CompiledRule, events: LabelledForRules[]): { precision: number; recall: number; n: number } {
+  let matched = 0, agree = 0, withVerdict = 0;
+  for (const e of events) {
+    const isVerdict = e.label === rule.verdict;
+    if (isVerdict) withVerdict += 1;
+    if (matches(rule, { userAgent: e.userAgent, ip: e.ip ?? '', msSinceCreated: e.msSinceCreated, signalType: rule.signalType })) {
+      matched += 1;
+      if (isVerdict) agree += 1;
+    }
+  }
+  return { precision: matched ? agree / matched : 1, recall: withVerdict ? agree / withVerdict : 1, n: matched };
+}
+
+export async function measureActiveRules(events: LabelledForRules[]): Promise<number> {
+  const rules = await FingerprintRule.find({ status: 'active' });
+  let updated = 0;
+  for (const r of rules) {
+    const c = compileRule(r);
+    if (!c) continue;
+    const m = measureRule(c, events);
+    r.measured = { ...m, at: new Date() };
+    await r.save();
+    updated += 1;
+  }
+  invalidateRuleCache();
+  return updated;
 }

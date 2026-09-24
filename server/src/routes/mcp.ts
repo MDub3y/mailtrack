@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpServer } from '../mcp/server';
+import { verifyApiToken, TOKEN_PREFIX } from '../services/apiTokenService';
 
 // The MCP door: Streamable HTTP, stateless (one server per request, no
 // session), authenticated with the owner's token in the Authorization
@@ -11,17 +12,19 @@ import { createMcpServer } from '../mcp/server';
 
 const router = Router();
 
-function ownerFrom(req: Request): string | null {
+async function ownerFrom(req: Request): Promise<string | null> {
   const h = req.headers.authorization;
   if (!h?.startsWith('Bearer ')) return null;
+  const token = h.slice(7).trim();
+  if (token.startsWith(TOKEN_PREFIX)) return (await verifyApiToken(token))?.ownerId ?? null;
   try {
-    const decoded = jwt.verify(h.slice(7), process.env.JWT_SECRET!) as { userId: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
     return decoded.userId ?? null;
   } catch { return null; }
 }
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
-  const ownerId = ownerFrom(req);
+  const ownerId = await ownerFrom(req);
   if (!ownerId) { res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized: send a MailTrack token as a Bearer header' }, id: null }); return; }
   const server = createMcpServer(ownerId);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

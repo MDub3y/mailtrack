@@ -20,7 +20,8 @@ export type AiJob =
   | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } }
   | { name: 'webhook-deliver'; data: { ownerId: string; endpointId: string; envelope: unknown } }
   | { name: 'queue-watch'; data: { ownerId: string } }
-  | { name: 'replay-drift'; data: { ownerId?: string } };
+  | { name: 'replay-drift'; data: { ownerId?: string } }
+  | { name: 'investigate-nightly'; data: Record<string, never> };
 
 type AiJobData = AiJob['data'];
 
@@ -213,6 +214,20 @@ export async function scheduleReplayDrift(): Promise<boolean> {
   return true;
 }
 
+// Nightly investigation (Phase 3 carry-over): one global scheduler; the job
+// runs the investigator for every owner with candidates. No candidates means
+// no model call, so the job is cheap when nothing is off.
+export const INVESTIGATE_NIGHTLY_EVERY_MS = () => Number(process.env.INVESTIGATE_NIGHTLY_EVERY_MS || 86_400_000);
+
+export async function scheduleNightlyInvestigation(): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled() || process.env.INVESTIGATE_NIGHTLY_ENABLED !== 'true') {
+    if (!queueDisabled()) await aiQueue().removeJobScheduler('investigate-nightly').catch(() => {});
+    return false;
+  }
+  await aiQueue().upsertJobScheduler('investigate-nightly', { every: INVESTIGATE_NIGHTLY_EVERY_MS() }, { name: 'investigate-nightly', data: {}, opts: { attempts: 1, removeOnComplete: 10, removeOnFail: 10 } });
+  return true;
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -271,6 +286,17 @@ export function startAiWorker(): Worker<AiJobData> {
           const r = await deliverToEndpoint(ownerId, endpointId, envelope as Parameters<typeof deliverToEndpoint>[2]);
           if (!r.ok && r.status !== 410 && r.error !== 'endpoint disabled' && r.error !== 'endpoint not found') throw new Error(r.error ?? 'delivery failed');
           return r;
+        }
+        case 'investigate-nightly': {
+          const { investigate } = await import('../ai/investigate/investigator');
+          const { Signal } = await import('../models/Signal');
+          const owners = (await Signal.distinct('ownerId', { type: { $in: ['open', 'link_click'] }, at: { $gte: new Date(Date.now() - 30 * 86_400_000) } })).map(String);
+          const out: Array<{ ownerId: string; ran: boolean; proposals?: number; error?: string }> = [];
+          for (const o of owners) {
+            try { const r = await investigate(o); out.push({ ownerId: o, ran: !!r, proposals: r?.proposals.length }); }
+            catch (err) { out.push({ ownerId: o, ran: false, error: err instanceof Error ? err.message : String(err) }); }
+          }
+          return out;
         }
         case 'replay-drift': {
           const { runDriftReplay } = await import('../ai/replay');

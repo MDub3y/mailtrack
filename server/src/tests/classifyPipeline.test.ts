@@ -158,23 +158,25 @@ test('header stage, cheap backend and policies: replies auto-process with a sign
   assert.equal((await get(reply._id)).triage.status, 'processed');
 });
 
-test('with no classifier available, header matches still classify and the rest stay unclassified with the reasons', async () => {
+test('with no key, header matches classify for free and the rest fall to the local backend, with the reasons kept; a key takes over on a forced re-run', async () => {
   const news = await inbound({ headers: { listId: '<list.example>' } });
-  const plain = await inbound({ subject: 'Hi', textExcerpt: 'hello there' });
+  const plain = await inbound({ subject: 'Your receipt', textExcerpt: 'receipt for order, invoice attached' });
   const s = await classifyInboundMessages(owner);
-  assert.deepEqual([s.classified, s.unclassified], [1, 1]);
+  assert.deepEqual([s.classified, s.unclassified], [2, 0]);
+  assert.deepEqual(s.byBackend, { headers: 1, local: 1 });
   assert.equal(s.reasons.length, 2);
+  assert.match(s.reasons.join('; '), /embeddings: no key .*; llm: no key/);
   assert.equal((await InboundMessage.findById(news._id))!.classification?.categoryKey, 'newsletter_or_bulk');
   const p = (await InboundMessage.findById(plain._id))!;
-  assert.equal(p.classification, undefined);
-  assert.equal(p.triage.status, 'unclassified');
-  assert.match(p.triage.error!, /no classifier available: embeddings: no key .*; llm: no key/);
+  assert.equal(p.classification?.backend, 'local');
+  assert.equal(p.classification?.categoryKey, 'transactional');
+  assert.equal(p.triage.status, 'awaiting_approval');
 
-  // Once a key arrives it is picked up on the next run.
+  // Once a key arrives, a forced re-run uses it.
   __setProviderForTests(fakeProvider([], { name: 'openai', embed: (i) => i.map(bagOfWords) }));
-  const s2 = await classifyInboundMessages(owner);
-  assert.deepEqual([s2.considered, s2.classified], [1, 1]);
-  assert.equal((await InboundMessage.findById(plain._id))!.triage.error, undefined);
+  const s2 = await classifyInboundMessages(owner, { ids: [plain._id.toString()], force: true });
+  assert.deepEqual([s2.considered, s2.classified, s2.byBackend.embeddings], [1, 1, 1]);
+  assert.equal((await InboundMessage.findById(plain._id))!.classification?.backend, 'embeddings');
 });
 
 test('correcting a category writes a label, adds a correction example, keeps the human verdict, and re-applies the policy', async () => {

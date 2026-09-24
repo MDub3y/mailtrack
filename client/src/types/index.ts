@@ -429,3 +429,6 @@ export interface SharedContactView {
     recentSignals: Array<{ type: string; at: string; verdict: string }>;
   }>;
 }
+
+export interface ApiTokenView { _id: string; name: string; prefix: string; scope: 'mcp'; createdAt: string; lastUsedAt?: string; expiresAt?: string; revokedAt?: string }
+export interface WebhookDeliveryView { _id: string; envelopeId: string; event: string; status: 'ok' | 'failed'; attempts: number; lastStatus?: number; lastError?: string; createdAt: string; lastAttemptAt: string }

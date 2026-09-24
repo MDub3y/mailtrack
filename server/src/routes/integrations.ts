@@ -4,7 +4,8 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { protect, AuthRequest } from '../middleware/auth';
 import { WebhookConfig, OUTBOUND_EVENTS, OutboundEvent } from '../models/Webhook';
-import { ensureWebhookConfig, rotateInboundSecret, addOutbound, removeOutbound, setOutboundEnabled, ingestExternalSignal, deliverToEndpoint, watchQueue } from '../services/webhookService';
+import { ensureWebhookConfig, rotateInboundSecret, addOutbound, removeOutbound, setOutboundEnabled, ingestExternalSignal, deliverToEndpoint, watchQueue, redeliverFailed, recentDeliveries } from '../services/webhookService';
+import { createApiToken, listApiTokens, revokeApiToken } from '../services/apiTokenService';
 import { scheduleQueueWatch, unscheduleQueueWatch } from '../queues/aiQueue';
 
 // The doors (doc/05, Elevations 1 and 7): the inbound signal webhook
@@ -118,12 +119,48 @@ router.post('/queue-watch', async (req: AuthRequest, res: Response): Promise<voi
   catch (err) { res.status(400).json({ message: err instanceof Error ? err.message : String(err) }); }
 });
 
-// POST /api/integrations/mcp-token — a long-lived, read-scoped token for
-// MCP clients. Not stored: revoking means rotating JWT_SECRET, which is
-// stated on the page. 90 days.
+// Stored read tokens for MCP clients: shown once, hashed at rest, each one
+// revocable on its own. (A signed 90-day JWT is still accepted for clients
+// configured before this existed.)
+router.get('/tokens', async (req: AuthRequest, res: Response): Promise<void> => {
+  try { res.json(await listApiTokens(req.userId!)); }
+  catch (err) { res.status(500).json({ message: err instanceof Error ? err.message : 'Server error' }); }
+});
+
+router.post('/tokens', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = z.object({ name: z.string().min(1).max(60).default('MCP client'), expiresInDays: z.number().int().min(1).max(365).optional() }).safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ message: 'name must be 1 to 60 characters' }); return; }
+  try {
+    const { token, record } = await createApiToken(req.userId!, parsed.data.name, { expiresInDays: parsed.data.expiresInDays });
+    res.status(201).json({ _id: record._id.toString(), name: record.name, prefix: record.prefix, token, expiresAt: record.expiresAt ?? null, scope: 'mcp' });
+  } catch (err) { res.status(500).json({ message: err instanceof Error ? err.message : 'Server error' }); }
+});
+
+router.delete('/tokens/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const ok = await revokeApiToken(req.userId!, req.params.id);
+    if (!ok) { res.status(404).json({ message: 'Token not found or already revoked' }); return; }
+    res.json({ revoked: true });
+  } catch (err) { res.status(500).json({ message: err instanceof Error ? err.message : 'Server error' }); }
+});
+
+// Kept for older clients; new ones should use stored tokens.
 router.post('/mcp-token', async (req: AuthRequest, res: Response): Promise<void> => {
   const token = jwt.sign({ userId: req.userId, scope: 'mcp' }, process.env.JWT_SECRET!, { expiresIn: '90d' });
-  res.json({ token, expiresInDays: 90, scope: 'mcp' });
+  res.json({ token, expiresInDays: 90, scope: 'mcp', deprecated: 'use POST /api/integrations/tokens for a revocable token' });
+});
+
+// Delivery log and redelivery of what failed.
+router.get('/outbound/:id/deliveries', async (req: AuthRequest, res: Response): Promise<void> => {
+  try { res.json(await recentDeliveries(req.userId!, req.params.id)); }
+  catch (err) { res.status(400).json({ message: err instanceof Error ? err.message : String(err) }); }
+});
+
+router.post('/outbound/:id/redeliver', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = z.object({ days: z.number().int().min(1).max(30).default(7) }).safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ message: 'days must be 1 to 30' }); return; }
+  try { res.json(await redeliverFailed(req.userId!, req.params.id, { days: parsed.data.days })); }
+  catch (err) { res.status(400).json({ message: err instanceof Error ? err.message : String(err) }); }
 });
 
 export default router;

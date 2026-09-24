@@ -4,7 +4,7 @@ import { protect, AuthRequest } from '../middleware/auth';
 import { Signal } from '../models/Signal';
 import { FingerprintRule } from '../models/FingerprintRule';
 import { Proposal } from '../models/Proposal';
-import { labelSignal, loadActiveRules, SEED_RULES } from '../services/classifierService';
+import { labelSignal, loadActiveRules, SEED_RULES, measureActiveRules } from '../services/classifierService';
 import { computeMetrics, seedEvents, labelledFromDb } from '../ai/evals/classifier';
 import { NoProviderKeyError } from '../ai/providers';
 import { BudgetExceededError, RunFailedError } from '../ai/runAgent';
@@ -19,8 +19,9 @@ router.use(protect);
 // GET /api/integrity — metrics over labelled events, rules, pending proposals, volume.
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const rules = await loadActiveRules(true);
     const labelled = [...seedEvents(), ...(await labelledFromDb())];
+    await measureActiveRules(labelled);
+    const rules = await loadActiveRules(true);
     const metrics = computeMetrics(labelled, rules);
     const [active, proposed, rejected] = await Promise.all([
       FingerprintRule.find({ status: 'active' }).sort({ createdAt: -1 }).lean(),

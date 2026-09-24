@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { WebhookConfig, IWebhookConfig, IOutboundEndpoint, OutboundEvent, MAX_FAILURES } from '../models/Webhook';
+import { WebhookDelivery } from '../models/WebhookDelivery';
 import { ISignal } from '../models/Signal';
 import { Contact } from '../models/Contact';
 import { ensureContact, recordSignal, onSignal } from './signalService';
@@ -131,6 +132,12 @@ export async function deliverToEndpoint(ownerId: string | mongoose.Types.ObjectI
   }
   const ok = !error;
   const failures = ok ? 0 : ep.failures + 1;
+  // The delivery log: one row per envelope and endpoint, updated on retry.
+  await WebhookDelivery.updateOne(
+    { endpointId: ep._id, envelopeId: envelope.id },
+    { $set: { ownerId: cfg.ownerId, event: envelope.event, envelope, status: ok ? 'ok' : 'failed', lastStatus: status, lastError: error, lastAttemptAt: new Date() }, $inc: { attempts: 1 }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true }
+  ).catch(() => {});
   await WebhookConfig.updateOne({ ownerId, 'outbound._id': endpointId }, {
     $set: {
       'outbound.$.lastDeliveryAt': new Date(), 'outbound.$.lastStatus': status, 'outbound.$.lastError': error, 'outbound.$.failures': failures,
@@ -195,6 +202,7 @@ export async function watchQueue(ownerId: string | mongoose.Types.ObjectId, now 
   }
   cfg.queueKeys = [...current.keys()];
   await cfg.save();
+  await pruneDeliveries().catch(() => {});
   return { appeared: appeared.length, resolved: resolved.length };
 }
 
@@ -211,4 +219,27 @@ export function installWebhookHooks(): void {
     const contact = await Contact.findById(signal.contactId).select('address displayName').lean();
     await emit(signal.ownerId, 'signal', 'signal.recorded', signalEnvelopeData(signal, contact));
   });
+}
+
+// Redelivers what failed for one endpoint in the last N days, oldest first.
+export const WEBHOOK_DELIVERY_RETENTION_DAYS = () => Number(process.env.WEBHOOK_DELIVERY_RETENTION_DAYS || 30);
+
+export async function redeliverFailed(ownerId: string | mongoose.Types.ObjectId, endpointId: string, opts: { days?: number; limit?: number } = {}): Promise<{ attempted: number; ok: number }> {
+  const since = new Date(Date.now() - (opts.days ?? 7) * 86_400_000);
+  const rows = await WebhookDelivery.find({ ownerId, endpointId, status: 'failed', createdAt: { $gte: since } }).sort({ createdAt: 1 }).limit(opts.limit ?? 100).lean();
+  let ok = 0;
+  for (const r of rows) {
+    const res = await deliverToEndpoint(ownerId, endpointId, r.envelope as OutboundEnvelope);
+    if (res.ok) ok += 1;
+  }
+  return { attempted: rows.length, ok };
+}
+
+export async function recentDeliveries(ownerId: string | mongoose.Types.ObjectId, endpointId: string, limit = 20) {
+  return WebhookDelivery.find({ ownerId, endpointId }).sort({ createdAt: -1 }).limit(limit).select('envelopeId event status attempts lastStatus lastError createdAt lastAttemptAt').lean();
+}
+
+export async function pruneDeliveries(): Promise<number> {
+  const r = await WebhookDelivery.deleteMany({ createdAt: { $lt: new Date(Date.now() - WEBHOOK_DELIVERY_RETENTION_DAYS() * 86_400_000) } });
+  return r.deletedCount ?? 0;
 }
