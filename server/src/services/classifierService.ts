@@ -15,6 +15,7 @@ import { Label } from '../models/Label';
 export const SEED_RULES: Array<Pick<IFingerprintRule, 'patternType' | 'pattern' | 'verdict' | 'signalType' | 'reasoning'>> = [
   { patternType: 'ua_regex', pattern: 'Edge\\/12\\.246', verdict: 'automated', signalType: 'open', reasoning: 'Known mail-security scanner fingerprint: Chrome/42 + Safari + Edge/12.246 in one User-Agent. No real browser sends this.' },
   { patternType: 'timing_floor_ms', pattern: '3000', verdict: 'automated', signalType: 'open', reasoning: 'An image fetch under 3 s after delivery is faster than any human notice-open-render.' },
+  { patternType: 'timing_floor_ms', pattern: '3000', verdict: 'automated', signalType: 'link_click', reasoning: 'A link fetched under 3 s after delivery is a delivery-time scanner (Safe Links, Proofpoint, Mimecast), not a person reading and clicking.' },
 ];
 
 export interface ClassifyInput {
@@ -114,7 +115,7 @@ export async function classify(input: ClassifyInput): Promise<ClassifyResult> {
 
 export async function labelSignal(ownerId: string, signalId: string, label: 'human' | 'automated'): Promise<ISignal | null> {
   const signal = await Signal.findOne({ _id: signalId, ownerId });
-  if (!signal || signal.type !== 'open') return null;
+  if (!signal || (signal.type !== 'open' && signal.type !== 'link_click')) return null;
   const previous = signal.integrity.verdict;
   signal.integrity.label = label;
   signal.integrity.verdict = label;

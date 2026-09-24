@@ -7,7 +7,7 @@ export interface ITrackedLink {
 }
 
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed' | 'received';
-export type EventType = 'sent' | 'delivered' | 'opened' | 'failed';
+export type EventType = 'sent' | 'delivered' | 'opened' | 'failed' | 'clicked';
 
 export interface IEmailEvent {
   type: EventType;
@@ -18,6 +18,7 @@ export interface IEmailEvent {
   // rather than a genuine human open (see routes/track.ts) — recorded for
   // visibility, but excluded from status/openCount.
   automated?: boolean;
+  linkId?: string;   // 'clicked' events: which rewritten link
 }
 
 export interface IEmail extends Document {
@@ -34,6 +35,11 @@ export interface IEmail extends Document {
   attachments: Array<{ documentId: string; name: string; shareUrl: string }>;
   trackingToken: string;
   openCount: number;
+  // Links rewritten through /api/track/:token/l/:linkId on the way out
+  // (Phase 6). The stored htmlBody keeps the original hrefs.
+  trackedLinks: ITrackedLink[];
+  clickCount: number;
+  lastClickedAt?: Date;
   firstOpenedAt?: Date;
   lastOpenedAt?: Date;
   providerMessageId?: string;
@@ -58,6 +64,7 @@ const EmailEventSchema = new Schema<IEmailEvent>(
     userAgent: { type: String },
     ip: { type: String },
     automated: { type: Boolean },
+    linkId: { type: String },
   },
   { _id: false }
 );
@@ -83,6 +90,9 @@ const EmailSchema = new Schema<IEmail>({
   },
   trackingToken:     { type: String, required: true, unique: true },
   openCount:         { type: Number, default: 0 },
+  trackedLinks:      { type: [new Schema({ linkId: String, originalUrl: String, clickCount: { type: Number, default: 0 } }, { _id: false })], default: [] },
+  clickCount:        { type: Number, default: 0 },
+  lastClickedAt:     { type: Date },
   firstOpenedAt:     { type: Date },
   lastOpenedAt:      { type: Date },
   providerMessageId: { type: String },

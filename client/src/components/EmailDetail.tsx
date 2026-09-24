@@ -14,6 +14,7 @@ const eventLabel: Record<string, { label: string; color: string; }> = {
   sent: { label: 'Sent to MailTrack Engine', color: '#64748b' },
   delivered: { label: 'Delivered to Inbound MX', color: '#16a34a' },
   opened: { label: 'Opened by Recipient', color: '#2563eb' },
+  clicked: { label: 'Link Clicked', color: '#7c3aed' },
   failed: { label: 'Delivery Failed', color: '#dc2626' },
 };
 
@@ -113,7 +114,7 @@ export const EmailDetail = ({ email, onClose }: Props) => {
                           {m.label}
                         </div>
                         <div className="text-[10px] font-mono text-[#94a3b8]">
-                          {new Date(evt.timestamp).toLocaleString()}
+                          {new Date(evt.timestamp).toLocaleString()}{evt.type === 'clicked' && evt.linkId ? ` · ${email.trackedLinks?.find((l) => l.linkId === evt.linkId)?.originalUrl ?? evt.linkId}` : ''}
                         </div>
                       </div>
                     </div>

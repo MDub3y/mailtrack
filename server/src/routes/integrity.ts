@@ -33,11 +33,18 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       { $match: { ownerId: new mongoose.Types.ObjectId(req.userId), type: 'open', at: { $gte: since } } },
       { $group: { _id: '$integrity.verdict', n: { $sum: 1 } } },
     ]);
+    const volumeByType = await Signal.aggregate<{ _id: { type: string; verdict: string }; n: number }>([
+      { $match: { ownerId: new mongoose.Types.ObjectId(req.userId), type: { $in: ['open', 'link_click'] }, at: { $gte: since } } },
+      { $group: { _id: { type: '$type', verdict: '$integrity.verdict' }, n: { $sum: 1 } } },
+    ]);
+    const byType: Record<string, Record<string, number>> = { open: {}, link_click: {} };
+    for (const v of volumeByType) byType[v._id.type][v._id.verdict] = v.n;
     res.json({
       metrics: { ...metrics, misses: metrics.misses.slice(0, 20) },
       seedHeuristics: SEED_RULES,
       rules: { active, proposed: proposed.map((r) => ({ ...r, proposalId: proposalByRule.get(r._id.toString()) ?? r.proposalId?.toString() })), rejected },
       volume30d: Object.fromEntries(volume.map((v) => [v._id, v.n])),
+      volume30dByType: byType,
     });
   } catch (err) {
     console.error('Integrity error:', err);

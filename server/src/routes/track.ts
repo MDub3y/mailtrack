@@ -98,4 +98,46 @@ router.get('/:token/pixel.png', async (req: Request, res: Response): Promise<voi
   res.status(200).end(PIXEL);
 });
 
+// GET /api/track/:token/l/:linkId — the click redirect. Link scanners
+// (Safe Links, Proofpoint, Mimecast) fetch every link at delivery time, so
+// the same classifier runs here with signalType 'link_click' and the
+// verdict travels with the signal. Always redirects when the link is
+// known; the recipient must never land on an error because of tracking.
+router.get('/:token/l/:linkId', async (req: Request, res: Response): Promise<void> => {
+  let target: string | null = null;
+  try {
+    const email = await Email.findOne({ trackingToken: req.params.token });
+    const link = email?.trackedLinks?.find((l) => l.linkId === req.params.linkId);
+    if (email && link) {
+      target = link.originalUrl;
+      const now = new Date();
+      const ip = ((req.headers['x-forwarded-for'] as string) || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+      const userAgent = req.headers['user-agent'] || '';
+      const msSinceCreated = now.getTime() - email.createdAt.getTime();
+      const verdict = await classify({ userAgent, ip, msSinceCreated, signalType: 'link_click' });
+      const automated = verdict.automated;
+      email.events.push({ type: 'clicked', timestamp: now, ip, userAgent, automated, linkId: link.linkId });
+      if (!automated) {
+        link.clickCount += 1;
+        email.clickCount = (email.clickCount ?? 0) + 1;
+        email.lastClickedAt = now;
+      }
+      await email.save();
+      const eventIndex = email.events.length - 1;
+      contactForEmail(email)
+        .then((contact) => recordSignal({
+          ownerId: email.senderId, contactId: contact._id, emailId: email._id, type: 'link_click', at: now,
+          payload: { url: link.originalUrl, linkId: link.linkId, userAgent, ip, eventIndex, msSinceCreated, matchedBy: verdict.matchedBy },
+          verdict: automated ? 'automated' : 'human', ruleId: verdict.ruleId, source: 'redirect', dedupeKey: `click:${email._id}:${eventIndex}`,
+        }))
+        .catch((err) => console.error('Click signal error:', err));
+    }
+  } catch (err) {
+    console.error('Click redirect error:', err);
+  }
+  if (!target) { res.status(404).send('Link not found'); return; }
+  res.set('Cache-Control', 'no-store');
+  res.redirect(302, target);
+});
+
 export default router;

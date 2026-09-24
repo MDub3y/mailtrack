@@ -28,7 +28,7 @@ const bucket = (ms: number): string => {
 export async function uaStats(pattern: string, ownerId?: mongoose.Types.ObjectId | string) {
   let regex: RegExp;
   try { regex = new RegExp(pattern, 'i'); } catch { return { error: `invalid regex: ${pattern}` }; }
-  const q: Record<string, unknown> = { type: 'open', 'payload.userAgent': { $regex: pattern, $options: 'i' } };
+  const q: Record<string, unknown> = { type: { $in: ['open', 'link_click'] }, 'payload.userAgent': { $regex: pattern, $options: 'i' } };
   if (ownerId) q.ownerId = ownerId;
   const rows = await Signal.find(q).select('payload integrity at').limit(5000).lean();
   const buckets: Record<string, number> = {};
@@ -55,7 +55,7 @@ export function investigatorTools(ownerId: mongoose.Types.ObjectId | string): Ag
       execute: async (input) => {
         const { signalId } = input as { signalId?: string };
         if (!signalId || !mongoose.isValidObjectId(signalId)) return 'invalid signalId';
-        const s = await Signal.findOne({ _id: signalId, ownerId, type: 'open' }).lean();
+        const s = await Signal.findOne({ _id: signalId, ownerId, type: { $in: ['open', 'link_click'] } }).lean();
         if (!s) return 'not found';
         const p = s.payload as { userAgent?: string; ip?: string; msSinceCreated?: number; matchedBy?: string };
         return JSON.stringify({ signalId, at: s.at, userAgent: p.userAgent, ip: p.ip, msSinceCreated: p.msSinceCreated, verdict: s.integrity.verdict, label: s.integrity.label ?? null, matchedBy: p.matchedBy ?? null });
@@ -77,7 +77,7 @@ export function investigatorTools(ownerId: mongoose.Types.ObjectId | string): Ag
       },
       execute: async (input) => {
         const sinceDays = Number((input as { sinceDays?: number }).sinceDays ?? 90);
-        const rows = await Signal.find({ ownerId, type: 'open', at: { $gte: new Date(Date.now() - sinceDays * 86_400_000) } }).select('payload integrity').limit(10_000).lean();
+        const rows = await Signal.find({ ownerId, type: { $in: ['open', 'link_click'] }, at: { $gte: new Date(Date.now() - sinceDays * 86_400_000) } }).select('payload integrity').limit(10_000).lean();
         const out: Record<string, Record<string, number>> = { human: {}, automated: {} };
         for (const r of rows) {
           const ms = (r.payload as { msSinceCreated?: number }).msSinceCreated ?? -1;
@@ -106,7 +106,7 @@ export function investigatorTools(ownerId: mongoose.Types.ObjectId | string): Ag
       },
       execute: async (input) => {
         const label = (input as { label?: string }).label;
-        const q: Record<string, unknown> = { ownerId, type: 'open', 'integrity.label': label ?? { $exists: true } };
+        const q: Record<string, unknown> = { ownerId, type: { $in: ['open', 'link_click'] }, 'integrity.label': label ?? { $exists: true } };
         // Kept small on purpose: tool results live in the loop's context.
         const rows = await Signal.find(q).sort({ at: -1 }).limit(30).lean();
         return JSON.stringify(rows.map((s) => ({ id: s._id, label: s.integrity.label, verdict: s.integrity.verdict, ua: summarizeUa((s.payload as { userAgent?: string }).userAgent ?? '').slice(0, 90), ms: (s.payload as { msSinceCreated?: number }).msSinceCreated })));
@@ -121,7 +121,7 @@ export function investigatorTools(ownerId: mongoose.Types.ObjectId | string): Ag
 export async function predictedEffect(rule: { patternType: 'ua_regex' | 'ip_cidr' | 'timing_floor_ms'; pattern: string; verdict: 'automated' | 'human' }, ownerId?: mongoose.Types.ObjectId | string) {
   const compiled = compileRule({ ...rule, signalType: 'open' } as Parameters<typeof compileRule>[0]);
   if (!compiled) return { wouldReclassify: 0, matchesLabelled: { agree: 0, disagree: 0 }, invalid: true };
-  const q: Record<string, unknown> = { type: 'open' };
+  const q: Record<string, unknown> = { type: { $in: ['open', 'link_click'] } };
   if (ownerId) q.ownerId = ownerId;
   const rows = await Signal.find(q).select('payload integrity').limit(20_000).lean();
   let wouldReclassify = 0, agree = 0, disagree = 0;

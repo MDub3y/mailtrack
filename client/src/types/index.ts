@@ -17,7 +17,8 @@ export interface User {
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed' | 'received';
 
 export interface EmailEvent {
-  type: EmailStatus;
+  type: EmailStatus | 'clicked';
+  linkId?: string;
   timestamp: string;
   automated?: boolean;
 }
@@ -40,6 +41,9 @@ export interface Email {
   status: EmailStatus;
   events: EmailEvent[];
   attachments: DocumentAttachment[];
+  trackedLinks?: Array<{ linkId: string; originalUrl: string; clickCount: number }>;
+  clickCount?: number;
+  lastClickedAt?: string;
   createdAt: string;
 }
 
@@ -187,6 +191,7 @@ export interface IntegrityView {
   seedHeuristics: Array<{ patternType: string; pattern: string; verdict: string; reasoning?: string }>;
   rules: { active: FingerprintRuleView[]; proposed: FingerprintRuleView[]; rejected: FingerprintRuleView[] };
   volume30d: Record<string, number>;
+  volume30dByType?: Record<string, Record<string, number>>;
 }
 
 export interface OpenSignalRow {

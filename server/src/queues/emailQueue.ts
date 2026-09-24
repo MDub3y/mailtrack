@@ -3,7 +3,7 @@ import IORedis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { Email, IEmail } from '../models/Email';
 import { User } from '../models/User';
-import { injectTrackingPixel, renderAttachmentLinks, renderAttachmentText } from '../services/emailService';
+import { injectTrackingPixel, renderAttachmentLinks, renderAttachmentText, rewriteLinks, TrackedLinkOut } from '../services/emailService';
 import { dispatchEmail, DispatchResult } from '../services/dispatchService';
 import { ensureContact, recordSignal } from '../services/signalService';
 
@@ -61,12 +61,15 @@ function pixelUrlFor(trackingToken: string): string {
 
 // The outgoing copy: attachment links (attributed via the tracking token)
 // then the pixel. The stored htmlBody is never changed.
-function outgoingBodies(email: Pick<IEmail, 'htmlBody' | 'textBody' | 'attachments' | 'trackingToken'>): { html: string; text: string } {
+function outgoingBodies(email: Pick<IEmail, 'htmlBody' | 'textBody' | 'attachments' | 'trackingToken'>): { html: string; text: string; links: TrackedLinkOut[] } {
   const attachments = (email.attachments || []).map((a) => ({ name: a.name, shareUrl: a.shareUrl }));
-  const withLinks = renderAttachmentLinks(email.htmlBody, attachments, email.trackingToken);
+  const baseUrl = (process.env.BASE_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const rewritten = rewriteLinks(email.htmlBody, email.trackingToken, baseUrl);
+  const withLinks = renderAttachmentLinks(rewritten.html, attachments, email.trackingToken);
   return {
     html: injectTrackingPixel(withLinks, pixelUrlFor(email.trackingToken)),
     text: renderAttachmentText(email.textBody, attachments, email.trackingToken),
+    links: rewritten.links,
   };
 }
 
@@ -127,7 +130,11 @@ async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
   if (!email) return;
 
   await attachContact(email);
-  const { html, text } = outgoingBodies(email);
+  const { html, text, links } = outgoingBodies(email);
+  if (links.length && !email.trackedLinks?.length) {
+    email.trackedLinks = links.map((l) => ({ ...l, clickCount: 0 }));
+    await email.save();
+  }
   const dispatched = await dispatchEmail(email.senderId.toString(), {
     to: email.to,
     subject: email.subject,

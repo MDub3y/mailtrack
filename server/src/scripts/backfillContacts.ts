@@ -29,19 +29,19 @@ async function main(): Promise<void> {
 
     for (let i = 0; i < email.events.length; i++) {
       const ev = email.events[i];
-      const type = ev.type === 'opened' ? 'open' : ev.type;
+      const type = ev.type === 'opened' ? 'open' : ev.type === 'clicked' ? 'link_click' : ev.type;
       // Same keys the live paths use (queues/emailQueue.ts, routes/track.ts),
       // so a backfill over already-tracked email adds nothing twice: opens
       // are per event index, sent/delivered/failed once per email.
-      const dedupeKey = type === 'open' ? `open:${email._id}:${i}` : `${type}:${email._id}`;
+      const dedupeKey = type === 'open' ? `open:${email._id}:${i}` : type === 'link_click' ? `click:${email._id}:${i}` : `${type}:${email._id}`;
       const { isNew } = await recordSignal({
         ownerId: email.senderId,
         contactId: contact._id,
         emailId: email._id,
         type,
         at: ev.timestamp,
-        payload: ev.type === 'opened' ? { userAgent: ev.userAgent, ip: ev.ip, eventIndex: i } : { eventIndex: i },
-        verdict: ev.type === 'opened' ? (ev.automated ? 'automated' : 'human') : 'human',
+        payload: ev.type === 'opened' || ev.type === 'clicked' ? { userAgent: ev.userAgent, ip: ev.ip, eventIndex: i, linkId: ev.linkId } : { eventIndex: i },
+        verdict: ev.type === 'opened' || ev.type === 'clicked' ? (ev.automated ? 'automated' : 'human') : 'human',
         source: 'backfill',
         dedupeKey,
       });

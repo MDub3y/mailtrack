@@ -110,6 +110,7 @@ export const Integrity = () => {
               ['Scans caught', pct(m.recall), `${m.truePositive} of ${m.truePositive + m.falseNegative}`, 'Prescans that arrive through the same proxy as a real open, past the timing floor, are the known residual.'],
               ['Suppressions that were right', pct(m.precision), `${m.truePositive} of ${m.truePositive + m.falsePositive}`, ''],
               ['Opens in the last 30 days', String((view.volume30d.human ?? 0) + (view.volume30d.automated ?? 0)), `${view.volume30d.human ?? 0} counted, ${view.volume30d.automated ?? 0} filtered`, ''],
+              ['Link clicks in the last 30 days', String((view.volume30dByType?.link_click?.human ?? 0) + (view.volume30dByType?.link_click?.automated ?? 0)), `${view.volume30dByType?.link_click?.human ?? 0} counted, ${view.volume30dByType?.link_click?.automated ?? 0} filtered as delivery-time scans`, 'Links in outgoing mail go through a redirect; the same rules apply per signal type.'],
             ].map(([label, big, small, note]) => (
               <div key={label} className="rounded-lg border border-[#eaedf1] bg-[#ffffff] p-3">
                 <div className="text-[#64748b]">{label}</div>

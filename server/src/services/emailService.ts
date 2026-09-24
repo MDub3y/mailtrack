@@ -42,3 +42,30 @@ export function injectTrackingPixel(html: string, pixelUrl: string): string {
   }
   return $.html();
 }
+
+// Rewrites every http(s) link in the outgoing HTML through the click
+// redirect, so a click becomes a signal with a verdict (doc/05, Elevation
+// 1). Attachment share links already carry ?via=<token> and are left
+// alone, as are mailto:, tel:, anchors and the pixel. Never mutates the
+// stored htmlBody: the caller stores the returned link table on the email.
+export interface TrackedLinkOut { linkId: string; originalUrl: string }
+
+export function rewriteLinks(html: string, trackingToken: string, baseUrl: string): { html: string; links: TrackedLinkOut[] } {
+  if (!html || !html.trim()) return { html, links: [] };
+  const $ = cheerio.load(html);
+  const links: TrackedLinkOut[] = [];
+  const byUrl = new Map<string, string>();
+  $('a[href]').each((_, el) => {
+    const href = ($(el).attr('href') || '').trim();
+    if (!/^https?:\/\//i.test(href)) return;
+    if (/[?&]via=/.test(href) || href.includes('/api/track/')) return;
+    let linkId = byUrl.get(href);
+    if (!linkId) {
+      linkId = `l${links.length + 1}`;
+      byUrl.set(href, linkId);
+      links.push({ linkId, originalUrl: href });
+    }
+    $(el).attr('href', `${baseUrl.replace(/\/$/, '')}/api/track/${trackingToken}/l/${linkId}`);
+  });
+  return { html: links.length ? $.html() : html, links };
+}
