@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
+import mongoose from 'mongoose';
 import { protect, AuthRequest } from '../middleware/auth';
 import { AgentRun } from '../models/AgentRun';
 import { Proposal } from '../models/Proposal';
@@ -232,6 +233,53 @@ router.get('/runs/:id', async (req: AuthRequest, res: Response): Promise<void> =
   } catch (err) {
     console.error('AI run error:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Replay reports (doc/05, Elevation 4)
+// ---------------------------------------------------------------------------
+
+router.get('/replays', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { ReplayReport } = await import('../models/ReplayReport');
+    res.json(await ReplayReport.find({ ownerId: req.userId }).sort({ createdAt: -1 }).limit(50).select('-rows').lean());
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+router.get('/replays/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { ReplayReport } = await import('../models/ReplayReport');
+    const r = mongoose.Types.ObjectId.isValid(req.params.id) ? await ReplayReport.findOne({ _id: req.params.id, ownerId: req.userId }).lean() : null;
+    if (!r) { res.status(404).json({ message: 'Report not found' }); return; }
+    res.json(r);
+  } catch (err) { res.status(500).json({ message: 'Server error' }); }
+});
+
+const ReplayBody = z.object({
+  kind: z.enum(['extract_memory', 'draft_follow_up', 'contact_brief', 'voice_profile', 'classify', 'digest']).optional(),
+  sinceDays: z.coerce.number().int().min(1).max(90).default(7),
+  limit: z.coerce.number().int().min(1).max(5).default(3),
+  model: z.string().max(200).optional(),
+  effort: z.enum(['low', 'medium', 'high']).optional(),
+  judge: z.boolean().optional(),
+  drift: z.boolean().optional(),
+});
+
+// POST /api/ai/replays: a small replay now (at most 5 runs), or a drift
+// check across kinds. Variants are a CLI concern (files in the repo).
+router.post('/replays', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = ReplayBody.safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }); return; }
+  try {
+    const { replaySample, runDriftReplay } = await import('../ai/replay');
+    const { kind, sinceDays, limit, model, effort, judge, drift } = parsed.data;
+    if (drift || !kind) { res.json(await runDriftReplay(req.userId!, { perKind: limit, days: sinceDays })); return; }
+    res.json(await replaySample(req.userId!, { kind, since: new Date(Date.now() - sinceDays * 86_400_000), limit, model, effort, judge, trigger: 'user' }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof NoProviderKeyError ? 400 : err instanceof BudgetExceededError ? 429 : 400;
+    res.status(status).json({ message });
   }
 });
 

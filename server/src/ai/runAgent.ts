@@ -73,6 +73,8 @@ const DEFAULT_MAX_TOKENS = 16_000;
 // results stay in full; older ones are cut to a stub so the conversation
 // stops growing with every step. The run record keeps every full result.
 const KEEP_FULL_TOOL_RESULTS = 3;
+// The verbatim prompt is kept on the run for replay, up to this size.
+const promptStoreMax = () => Number(process.env.AI_PROMPT_STORE_MAX_CHARS || 200_000);
 const STUB_TOOL_RESULT_CHARS = 240;
 
 export function editContext(messages: NeutralMessage[], keepFull = KEEP_FULL_TOOL_RESULTS, stubChars = STUB_TOOL_RESULT_CHARS): NeutralMessage[] {
@@ -156,6 +158,10 @@ export async function runAgent<TOut>(spec: RunSpec<TOut>): Promise<RunResult<TOu
     status: 'running',
     inputRefs: spec.inputRefs ?? {},
     receipt: spec.context.receipt,
+    ...((): { prompt?: unknown; promptStored: boolean } => {
+      const prompt = { system: spec.context.system, messages: spec.context.messages, tools: toolDefs };
+      return JSON.stringify(prompt).length <= promptStoreMax() ? { prompt, promptStored: true } : { promptStored: false };
+    })(),
   });
 
   const usage: IAgentRun['usage'] = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };

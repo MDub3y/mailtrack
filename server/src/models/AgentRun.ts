@@ -13,11 +13,12 @@ export type RunKind =
   | 'investigate'
   | 'judge'
   | 'digest'
+  | 'replay'
   | 'classify'   // cheap category pick by the extractor model
   | 'embed';     // embeddings for the classification tier
 
 export const RUN_KINDS: RunKind[] = [
-  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge', 'classify', 'embed', 'digest',
+  'smoke', 'extract_memory', 'contact_brief', 'voice_profile', 'draft_follow_up', 'investigate', 'judge', 'classify', 'embed', 'digest', 'replay',
 ];
 
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'refused';
@@ -60,7 +61,16 @@ export interface IAgentRun extends Document {
     inboundMessageIds?: string[];
     categoryKeys?: string[];
     note?: string;
+    // Replays: the run this one re-executes, and the variant applied.
+    replayOf?: string;
+    variant?: string;
   };
+  // The exact prompt the model was shown (system blocks, initial messages,
+  // tool definitions), so any run can be replayed under a different prompt,
+  // model, or effort (doc/05, Elevation 4). Hidden unless selected; not
+  // stored when it exceeds AI_PROMPT_STORE_MAX_CHARS.
+  prompt?: { system: Array<{ text: string; cacheBoundary?: boolean }>; messages: unknown[]; tools?: unknown[] };
+  promptStored?: boolean;
   receipt: IContextReceipt;
   steps: IRunStep[];
   output?: unknown;
@@ -105,6 +115,8 @@ const AgentRunSchema = new Schema<IAgentRun>({
   effort:  { type: String },
   status:  { type: String, enum: ['running', 'succeeded', 'failed', 'refused'], default: 'running' },
   inputRefs: { type: Schema.Types.Mixed, default: {} },
+  prompt: { type: Schema.Types.Mixed, select: false },
+  promptStored: { type: Boolean },
   receipt: {
     sections: { type: [ReceiptSectionSchema], default: [] },
     totalInputTokens: { type: Number, default: 0 },

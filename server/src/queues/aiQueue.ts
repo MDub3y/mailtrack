@@ -19,7 +19,8 @@ export type AiJob =
   | { name: 'classify-messages'; data: { ownerId: string; ids?: string[] } }
   | { name: 'process-message'; data: { inboundMessageId: string; trigger: 'auto' | 'user' | 'retry' } }
   | { name: 'webhook-deliver'; data: { ownerId: string; endpointId: string; envelope: unknown } }
-  | { name: 'queue-watch'; data: { ownerId: string } };
+  | { name: 'queue-watch'; data: { ownerId: string } }
+  | { name: 'replay-drift'; data: { ownerId?: string } };
 
 type AiJobData = AiJob['data'];
 
@@ -199,6 +200,19 @@ export async function reconcileQueueWatchSchedules(): Promise<number> {
   return cfgs.length;
 }
 
+// Weekly drift replay (doc/05, Elevation 4): one global scheduler; the job
+// replays a sample of each owner's week under the current prompt.
+export const REPLAY_DRIFT_EVERY_MS = () => Number(process.env.REPLAY_DRIFT_EVERY_MS || 7 * 86_400_000);
+
+export async function scheduleReplayDrift(): Promise<boolean> {
+  if (!isAiEnabled() || queueDisabled() || process.env.REPLAY_DRIFT_ENABLED !== 'true') {
+    if (!queueDisabled()) await aiQueue().removeJobScheduler('replay-drift').catch(() => {});
+    return false;
+  }
+  await aiQueue().upsertJobScheduler('replay-drift', { every: REPLAY_DRIFT_EVERY_MS() }, { name: 'replay-drift', data: {}, opts: { attempts: 1, removeOnComplete: 10, removeOnFail: 10 } });
+  return true;
+}
+
 export function startAiWorker(): Worker<AiJobData> {
   const worker = new Worker<AiJobData>(
     'ai',
@@ -257,6 +271,18 @@ export function startAiWorker(): Worker<AiJobData> {
           const r = await deliverToEndpoint(ownerId, endpointId, envelope as Parameters<typeof deliverToEndpoint>[2]);
           if (!r.ok && r.status !== 410 && r.error !== 'endpoint disabled' && r.error !== 'endpoint not found') throw new Error(r.error ?? 'delivery failed');
           return r;
+        }
+        case 'replay-drift': {
+          const { runDriftReplay } = await import('../ai/replay');
+          const { AgentRun } = await import('../models/AgentRun');
+          const { ownerId } = job.data as { ownerId?: string };
+          const owners = ownerId ? [ownerId] : (await AgentRun.distinct('ownerId', { status: 'succeeded', promptStored: true, startedAt: { $gte: new Date(Date.now() - 7 * 86_400_000) } })).map(String);
+          const out: Array<{ ownerId: string; reports: number; error?: string }> = [];
+          for (const o of owners) {
+            try { out.push({ ownerId: o, reports: (await runDriftReplay(o)).length }); }
+            catch (err) { out.push({ ownerId: o, reports: 0, error: err instanceof Error ? err.message : String(err) }); }
+          }
+          return out;
         }
         case 'queue-watch': {
           const { watchQueue } = await import('../services/webhookService');

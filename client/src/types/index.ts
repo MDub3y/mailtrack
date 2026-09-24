@@ -379,3 +379,20 @@ export interface IntegrationsView {
   outbound: OutboundEndpointView[];
   mcp: { url: string };
 }
+
+// ---------------------------------------------------------------------------
+// Replay reports (Phase 6)
+// ---------------------------------------------------------------------------
+
+export interface ReplayCheckSummary { pass: number; of: number; mean?: number }
+
+export interface ReplayReportView {
+  _id: string;
+  kind: string;
+  trigger: 'cli' | 'user' | 'drift';
+  params: { since: string; limit: number; variant?: string; variantSource?: string; model?: string; effort?: string; judge?: boolean };
+  rows?: Array<{ runId: string; replayRunId?: string; status: 'ok' | 'failed' | 'skipped'; error?: string; original: { model: string; costUsd: number; tokens: number }; replay?: { model: string; costUsd: number; tokens: number; ms: number }; checks: Record<string, { value: number | boolean; note?: string }>; agreement?: number }>;
+  summary: { n: number; ok: number; failed: number; meanAgreement?: number; checks: Record<string, ReplayCheckSummary>; costUsd: { original: number; replay: number; judge: number }; tokens: { original: number; replay: number } };
+  createdAt: string;
+  finishedAt?: string;
+}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ReplayReports } from '../components/ReplayReports';
 import { aiApi } from '../api';
 import type { AgentRun, RunStatus } from '../types';
 
@@ -166,6 +167,8 @@ export const Runs = () => {
             {enabled === false && <span className="ml-2 text-[#92400e]">AI features are currently disabled on the server.</span>}
           </p>
         </div>
+
+        <ReplayReports />
 
         {loading ? (
           <div className="p-8 text-xs text-[#64748b]">Loading…</div>
