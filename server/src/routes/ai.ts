@@ -237,6 +237,36 @@ router.get('/runs/:id', async (req: AuthRequest, res: Response): Promise<void> =
 });
 
 // ---------------------------------------------------------------------------
+// Trust policy (doc/05, Elevation 3): visible thresholds and calibration
+// ---------------------------------------------------------------------------
+
+router.get('/trust', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { trustOverview } = await import('../ai/trustPolicy');
+    res.json(await trustOverview(req.userId!));
+  } catch (err) { res.status(500).json({ message: err instanceof Error ? err.message : 'Server error' }); }
+});
+
+const TrustBody = z.object({
+  enabled: z.boolean().optional(),
+  minSample: z.number().int().min(10).max(500).optional(),
+  minAcceptanceRate: z.number().min(0.8).max(1).optional(),
+  minConfidence: z.number().min(0.5).max(1).optional(),
+});
+
+router.put('/trust', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = TrustBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }); return; }
+  try {
+    const set: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsed.data)) if (v !== undefined) set[`trust.${k}`] = v;
+    await AiSettings.updateOne({ ownerId: req.userId }, { $set: { ...set, updatedAt: new Date() } }, { upsert: true });
+    const { trustOverview } = await import('../ai/trustPolicy');
+    res.json(await trustOverview(req.userId!));
+  } catch (err) { res.status(500).json({ message: err instanceof Error ? err.message : 'Server error' }); }
+});
+
+// ---------------------------------------------------------------------------
 // Replay reports (doc/05, Elevation 4)
 // ---------------------------------------------------------------------------
 

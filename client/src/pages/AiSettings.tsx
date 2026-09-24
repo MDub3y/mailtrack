@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { aiApi } from '../api';
 import type { AiSettingsView, AiConnectionTest, ProviderName, VoiceView } from '../types';
 import { CategoriesSettings } from '../components/CategoriesSettings';
+import { TrustSettings } from '../components/TrustSettings';
 
 // The sender's voice: derived from their own sent mail, editable in plain
 // prose, and the stable prefix under every draft.
@@ -172,6 +173,8 @@ export const AiSettings = () => {
         <VoiceSection />
 
         <CategoriesSettings />
+
+        <TrustSettings />
 
         <section>
           <h2 className="text-sm font-semibold text-[#0f172a] mb-3">Providers</h2>

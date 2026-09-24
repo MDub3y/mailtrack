@@ -396,3 +396,13 @@ export interface ReplayReportView {
   createdAt: string;
   finishedAt?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Trust policy (Phase 6)
+// ---------------------------------------------------------------------------
+
+export interface TrustOverviewView {
+  config: { enabled: boolean; minSample: number; minAcceptanceRate: number; minConfidence: number; source: { enabled: 'server' | 'owner' | 'default'; thresholds: 'server' | 'owner' | 'default' } };
+  kinds: Array<{ kind: string; reversible: boolean; sample: number; acceptanceRate: number; earned: boolean; reason: string; autoAccepted30d: number; reverted30d: number; pending: number }>;
+  calibration: Record<string, { buckets: Array<{ from: number; to: number; n: number; accepted: number; rate: number }>; suggestedMinConfidence?: number; n: number }>;
+}

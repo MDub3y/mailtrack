@@ -31,6 +31,9 @@ export interface IAiSettings extends Document {
   // Negative probe cache: a provider found not to offer embeddings at call
   // time is not retried on every batch (see ai/classify/chooser.ts).
   capabilities?: { embeddingsUnsupported?: Partial<Record<ProviderName, Date>> };
+  // Earned autonomy (Phase 6): the owner's switch and thresholds; server
+  // values apply where these are unset. See ai/trustPolicy.ts.
+  trust?: { enabled?: boolean; minSample?: number; minAcceptanceRate?: number; minConfidence?: number };
   updatedAt: Date;
 }
 
@@ -52,6 +55,7 @@ const AiSettingsSchema = new Schema<IAiSettings>({
     type: new Schema({ primary: String, extractor: String, embedder: String }, { _id: false }),
     default: {},
   },
+  trust: { type: new Schema({ enabled: Boolean, minSample: Number, minAcceptanceRate: Number, minConfidence: Number }, { _id: false }) },
   capabilities: {
     type: new Schema({
       embeddingsUnsupported: { type: new Schema({ anthropic: Date, openai: Date, openrouter: Date, custom: Date }, { _id: false }) },

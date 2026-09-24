@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView } from '../types';
+import type { AuthResponse, Email, User, PlatformUser, PlatformDocument, ShareTokenInfo, BulkJobStatus, DocumentAttachment, Organization, AgentRun, AiSettingsView, AiSettingsUpdate, AiConnectionTest, ContactSummary, ContactDetailView, MemoryItem, QueueItem, QueueRule, DraftResult, VoiceView, IntegrityView, OpenSignalRow, InboundMessageView, CategoryView, InboxStatusView, InboxSyncResult, CategoryPolicy, TriageStatus, DigestView, IntegrationsView, ReplayReportView, TrustOverviewView } from '../types';
 
 const API_BASE = 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
@@ -72,6 +72,8 @@ export const aiApi = {
   getVoice: () => api.get<VoiceView>('/ai/voice'),
   regenerateVoice: () => api.post<{ prose: string; runId: string; status: string }>('/ai/voice', {}),
   setVoice: (prose: string) => api.put<{ prose: string; source: string }>('/ai/voice', { prose }),
+  getTrust: () => api.get<TrustOverviewView>('/ai/trust'),
+  setTrust: (data: { enabled?: boolean; minSample?: number; minAcceptanceRate?: number; minConfidence?: number }) => api.put<TrustOverviewView>('/ai/trust', data),
   listReplays: () => api.get<ReplayReportView[]>('/ai/replays'),
   getReplay: (id: string) => api.get<ReplayReportView>(`/ai/replays/${id}`),
   runReplay: (data: { kind?: string; sinceDays?: number; limit?: number; judge?: boolean; drift?: boolean }) => api.post<ReplayReportView | ReplayReportView[]>('/ai/replays', data),
