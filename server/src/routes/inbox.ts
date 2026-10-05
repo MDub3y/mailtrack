@@ -7,7 +7,7 @@ import { Category, CATEGORY_KEY_RE } from '../models/Category';
 import { isAiEnabled } from '../ai/config';
 import { NoProviderKeyError } from '../ai/providers';
 import { BudgetExceededError, RunFailedError } from '../ai/runAgent';
-import { inboxStatus, syncInbox, revokeGmailReadGrant, setInboxSyncEnabled, parsePushNotification, userForPushAddress, pushConfigured } from '../services/inboxService';
+import { inboxStatus, syncInbox, backfillInbox, setInboxInitial, revokeGmailReadGrant, setInboxSyncEnabled, parsePushNotification, userForPushAddress, pushConfigured } from '../services/inboxService';
 import { enqueueInboxSyncNow, enqueueProcessMessage, enqueueClassify, scheduleInboxSync, unscheduleInboxSync } from '../queues/aiQueue';
 import { loadCategories, createCategory, updateCategory, addExample } from '../ai/classify/categories';
 import { classifyInboundMessages, deleteCategoryAndReassign, CLASSIFY_BATCH_MAX } from '../ai/classify';
@@ -65,6 +65,37 @@ router.post('/sync', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (await enqueueInboxSyncNow(req.userId!)) { res.json({ queued: true }); return; }
     const sync = await syncInbox(req.userId!, { trigger: 'user' });
+    const classify = { considered: 0, classified: 0, awaiting: 0, auto: 0, skipped: 0, unclassified: 0 };
+    for (let i = 0; i < sync.newIds.length; i += CLASSIFY_BATCH_MAX) {
+      const s = await classifyInboundMessages(req.userId!, { ids: sync.newIds.slice(i, i + CLASSIFY_BATCH_MAX) });
+      for (const k of Object.keys(classify) as Array<keyof typeof classify>) classify[k] += s[k];
+    }
+    res.json({ queued: false, sync, classify });
+  } catch (err) { fail(res, err); }
+});
+
+// PUT /api/inbox/initial { days?, max? } — the owner's pull window, set
+// before consent or any time after. null resets a field to the server
+// default. Values are clamped server-side; the effective window comes back.
+const InitialBody = z.object({ days: z.number().nullable().optional(), max: z.number().nullable().optional() });
+router.put('/initial', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = InitialBody.safeParse(req.body);
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    res.json(await setInboxInitial(req.userId!, parsed.data));
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/inbox/backfill { days?, max? } — a manual bounded pull over a
+// window the owner chooses; stored mail dedupes, so repeating or widening
+// is safe. Classification of what arrived follows, inline when the queue
+// worker is off, exactly like "Sync now".
+const BackfillBody = z.object({ days: z.number().optional(), max: z.number().optional() });
+router.post('/backfill', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = BackfillBody.safeParse(req.body ?? {});
+  if (!parsed.success) { invalid(res, parsed.error); return; }
+  try {
+    const sync = await backfillInbox(req.userId!, parsed.data);
     const classify = { considered: 0, classified: 0, awaiting: 0, auto: 0, skipped: 0, unclassified: 0 };
     for (let i = 0; i < sync.newIds.length; i += CLASSIFY_BATCH_MAX) {
       const s = await classifyInboundMessages(req.userId!, { ids: sync.newIds.slice(i, i + CLASSIFY_BATCH_MAX) });

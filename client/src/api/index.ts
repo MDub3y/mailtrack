@@ -141,6 +141,8 @@ export const integrityApi = {
 export const inboxApi = {
   status: () => api.get<InboxStatusView>('/inbox/status'),
   syncNow: () => api.post<InboxSyncResult>('/inbox/sync', {}),
+  setInitial: (v: { days?: number | null; max?: number | null }) => api.put<{ days: number; max: number }>('/inbox/initial', v),
+  backfill: (v: { days?: number; max?: number } = {}) => api.post<InboxSyncResult>('/inbox/backfill', v),
   setSyncEnabled: (enabled: boolean) => api.put<{ enabled: boolean }>('/inbox/sync', { enabled }),
   revoke: () => api.delete<{ revoked: boolean; deletedMessages: number }>('/inbox/grant'),
   listMessages: (q: { category?: string; status?: TriageStatus; limit?: number; before?: string } = {}) => {

@@ -24,6 +24,11 @@ export interface IUser extends Document {
   // gmail.readonly, never widened from the send grant. Tokens are encrypted
   // at rest (utils/secrets) and hidden from queries unless selected.
   gmailRead?: IGmailReadGrant;
+  // The owner's choice of how much mail the initial inbox pull (and any
+  // later manual backfill) takes. Lives outside gmailRead so it can be set
+  // before the consent exists and survives a revoke. Absent fields fall
+  // back to the server's INBOX_INITIAL_* defaults.
+  inboxInitial?: { days?: number; max?: number };
   // Digest window: when the owner last looked, and the queue keys at that
   // moment so the next digest can say what appeared and what resolved.
   digest?: { lastSeenAt?: Date; queueKeys?: string[] };
@@ -76,6 +81,7 @@ const UserSchema = new Schema<IUser>({
   organizationId:     { type: Schema.Types.ObjectId, ref: 'Organization' },
   shareContactMemory: { type: Boolean, default: false },
   gmailRead:          { type: GmailReadSchema },
+  inboxInitial:       { type: new Schema({ days: Number, max: Number }, { _id: false }) },
   digest:             { type: new Schema({ lastSeenAt: Date, queueKeys: { type: [String], default: [] } }, { _id: false }) },
 });
 

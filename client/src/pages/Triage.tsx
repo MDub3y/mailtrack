@@ -49,11 +49,44 @@ const ago = (iso: string) => {
   return `${Math.round(h / 24)}d ago`;
 };
 
+const numInput = 'w-16 px-1.5 py-1 rounded-md border border-[#eaedf1] bg-[#ffffff] text-[11px] text-[#0f172a] text-right';
+
 const ConsentBanner = ({ status, onChanged }: { status: InboxStatusView; onChanged: () => Promise<void> }) => {
   const [params] = useSearchParams();
   const result = params.get('gmailRead');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // The pull window is the owner's choice (clamped server-side); the status
+  // payload carries the effective values and the allowed bounds.
+  const [days, setDays] = useState(String(status.initial.days));
+  const [max, setMax] = useState(String(status.initial.max));
+  useEffect(() => { setDays(String(status.initial.days)); setMax(String(status.initial.max)); }, [status.initial.days, status.initial.max]);
+
+  const saveInitial = async (): Promise<void> => {
+    const d = Number(days), m = Number(max);
+    try {
+      const r = (await inboxApi.setInitial({ days: Number.isFinite(d) && days !== '' ? d : undefined, max: Number.isFinite(m) && max !== '' ? m : undefined })).data;
+      setDays(String(r.days)); setMax(String(r.max));
+    } catch (err) { setMsg(errorOf(err, 'Could not save the pull window.')); }
+  };
+  const pull = async () => {
+    setBusy(true); setMsg('');
+    try {
+      await saveInitial();
+      const r = (await inboxApi.backfill({ days: Number(days), max: Number(max) })).data;
+      const created = r.sync?.created ?? 0;
+      setMsg(`${created} new message${created === 1 ? '' : 's'}${r.classify ? `, ${r.classify.classified} sorted, ${r.classify.awaiting} waiting for you` : ''}${r.sync?.capped ? ' (window capped; pull again or raise the cap)' : ''}.`);
+      await onChanged();
+    } catch (err) { setMsg(errorOf(err, 'Could not pull.')); }
+    finally { setBusy(false); }
+  };
+
+  const windowInputs = (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      last <input className={numInput} type="number" min={status.initial.bounds.days.min} max={status.initial.bounds.days.max} value={days} onChange={(e) => setDays(e.target.value)} onBlur={saveInitial} aria-label="days to pull" /> days,
+      up to <input className={numInput} type="number" min={status.initial.bounds.max.min} max={status.initial.bounds.max.max} value={max} onChange={(e) => setMax(e.target.value)} onBlur={saveInitial} aria-label="maximum messages" /> messages
+    </span>
+  );
 
   const revoke = async () => {
     if (!confirm('Stop reading your inbox? Messages that were never read by the model are deleted; those already in a contact\'s history stay.')) return;
@@ -79,8 +112,9 @@ const ConsentBanner = ({ status, onChanged }: { status: InboxStatusView; onChang
           <div>
             <div className="font-medium">Let MailTrack read your inbox to sort it and catch replies.</div>
             <div className="text-amber-700 mt-0.5">
-              A separate, read-only Google permission. What is read: INBOX mail only (never spam, trash, drafts or sent), the last 30 days at first, then new mail every few minutes. What is stored: sender, subject, and a short excerpt. What the model sees: only categories you allow, and only as untrusted text. Revoke here at any time.
+              A separate, read-only Google permission. What is read: INBOX mail only (never spam, trash, drafts or sent) — the {windowInputs} at first, then new mail every few minutes. What is stored: sender, subject, and a short excerpt. What the model sees: only categories you allow, and only as untrusted text. Revoke here at any time.
             </div>
+            {msg && <div className="mt-1">{msg}</div>}
           </div>
           <a href={authApi.googleReadConnectUrl()} className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 text-white text-[11px] font-semibold shrink-0 transition">Allow inbox reading</a>
         </div>
@@ -94,6 +128,8 @@ const ConsentBanner = ({ status, onChanged }: { status: InboxStatusView; onChang
       {status.lastSyncError && <span className="text-[#991b1b]" title={status.lastSyncError}>· last sync failed</span>}
       <span className="flex-1" />
       {msg && <span>{msg}</span>}
+      <span className="text-[#64748b]">{windowInputs}</span>
+      <button className={btn} disabled={busy || !status.syncEnabled} onClick={pull} title="Pull mail in this window now; already-stored messages are skipped">{busy ? 'Pulling…' : 'Pull'}</button>
       <button className={btn} disabled={busy} onClick={toggle}>{status.syncEnabled ? 'Pause' : 'Resume'}</button>
       <button className={btn} disabled={busy} onClick={revoke}>Revoke access</button>
     </div>

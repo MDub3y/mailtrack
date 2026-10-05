@@ -339,6 +339,7 @@ export interface InboxStatusView {
   lastSyncAt?: string;
   lastSyncError?: string;
   grantedAt?: string;
+  initial: { days: number; max: number; bounds: { days: { min: number; max: number }; max: { min: number; max: number } } };
   counts: { total: number; unclassified: number; awaiting: number; processed: number };
 }
 

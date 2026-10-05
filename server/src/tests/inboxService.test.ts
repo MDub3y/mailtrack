@@ -11,7 +11,7 @@ import { InboundMessage } from '../models/InboundMessage';
 import { encryptSecret } from '../utils/secrets';
 import {
   parseGmailMessage, stripQuotedReply, htmlToText, parseAddress, matchTrackedEmail, ingestMessage, syncInbox, inboxStatus,
-  revokeGmailReadGrant, setInboxSyncEnabled, buildGoogleReadAuthUrl, READ_SCOPE,
+  revokeGmailReadGrant, setInboxSyncEnabled, buildGoogleReadAuthUrl, READ_SCOPE, setInboxInitial, backfillInbox,
 } from '../services/inboxService';
 import { rfcMessageIdFor } from '../services/gmailService';
 
@@ -170,6 +170,42 @@ test('initial sync is bounded to recent INBOX mail and a cap; then history is in
     delete process.env.INBOX_INITIAL_MAX;
     delete process.env.INBOX_SYNC_MAX_PER_RUN;
   }
+});
+
+test('the pull window is the owner\'s choice, clamped; the initial sync honours it and a backfill re-lists it with stored rows deduped', async () => {
+  // Stored per owner, clamped to the bounds, null resets to the default.
+  assert.deepEqual(await setInboxInitial(owner.toString(), { days: 7, max: 2 }), { days: 7, max: 2 });
+  assert.deepEqual(await setInboxInitial(owner.toString(), { days: 9999, max: -5 }), { days: 365, max: 1 });
+  assert.deepEqual(await setInboxInitial(owner.toString(), { days: null, max: 2 }), { days: 30, max: 2 });
+  assert.deepEqual((await inboxStatus(owner.toString())).initial.days, 30);
+
+  const day = 86_400_000;
+  for (let i = 0; i < 4; i++) gmail.add({ id: `m${i}`, from: `s${i}@x.com`, text: `mail ${i}`, internalDate: Date.now() - i * day }, { history: false });
+
+  // The initial sync reads the stored window, not the env default.
+  const first = await syncInbox(owner.toString(), { trigger: 'user' });
+  assert.equal(first.mode, 'initial');
+  assert.equal(first.error, undefined);
+  assert.equal(first.created, 2);
+  assert.equal(first.capped, true);
+  assert.match((gmail.calls.find((c) => c.method === 'listMessages')!.args as { q: string }).q, /newer_than:30d/);
+
+  // A backfill over a wider window picks up what the cap left out; what is
+  // already stored dedupes to nothing, so repeating is free of duplicates.
+  const back = await backfillInbox(owner.toString(), { days: 60, max: 10 });
+  assert.equal(back.mode, 'backfill');
+  assert.equal(back.error, undefined);
+  assert.equal(back.fetched, 4);
+  assert.equal(back.created, 2);
+  assert.equal(back.capped, false);
+  assert.equal(await InboundMessage.countDocuments({ ownerId: owner }), 4);
+  const again = await backfillInbox(owner.toString(), { days: 60, max: 10 });
+  assert.equal(again.created, 0);
+
+  // The history cursor was untouched, and a paused grant refuses to pull.
+  assert.equal((await User.findById(owner).select('gmailRead'))!.gmailRead!.historyId, '1000');
+  await setInboxSyncEnabled(owner.toString(), false);
+  assert.equal((await backfillInbox(owner.toString(), {})).skipped, 'disabled');
 });
 
 test('an expired historyId (404) falls back to a bounded re-list since the last sync and restarts history from now', async () => {

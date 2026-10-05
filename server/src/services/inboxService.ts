@@ -22,6 +22,37 @@ export const READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
 export const INBOX_INITIAL_DAYS = () => Number(process.env.INBOX_INITIAL_DAYS || 30);
 export const INBOX_INITIAL_MAX = () => Number(process.env.INBOX_INITIAL_MAX || 500);
+
+// The initial pull is the owner's choice (ADR: fine-grained control over
+// what is read), clamped to bounds that keep one pull affordable in both
+// Gmail quota and classification cost. Env values are the defaults.
+export const INITIAL_DAYS_BOUNDS = { min: 1, max: 365 } as const;
+export const INITIAL_MAX_BOUNDS = { min: 1, max: 1000 } as const;
+const clampInt = (v: number, b: { min: number; max: number }) => Math.min(b.max, Math.max(b.min, Math.floor(v)));
+
+export function effectiveInitial(user: Pick<IUser, 'inboxInitial'> | null | undefined): { days: number; max: number } {
+  const days = user?.inboxInitial?.days ?? INBOX_INITIAL_DAYS();
+  const max = user?.inboxInitial?.max ?? INBOX_INITIAL_MAX();
+  return { days: clampInt(days, INITIAL_DAYS_BOUNDS), max: clampInt(max, INITIAL_MAX_BOUNDS) };
+}
+
+// Store the owner's pull window. null resets a field to the server default;
+// an absent field is left unchanged. Returns what will actually be used.
+export async function setInboxInitial(userId: string, input: { days?: number | null; max?: number | null }): Promise<{ days: number; max: number }> {
+  const set: Record<string, number> = {};
+  const unset: Record<string, 1> = {};
+  if (input.days === null) unset['inboxInitial.days'] = 1;
+  else if (typeof input.days === 'number' && Number.isFinite(input.days)) set['inboxInitial.days'] = clampInt(input.days, INITIAL_DAYS_BOUNDS);
+  if (input.max === null) unset['inboxInitial.max'] = 1;
+  else if (typeof input.max === 'number' && Number.isFinite(input.max)) set['inboxInitial.max'] = clampInt(input.max, INITIAL_MAX_BOUNDS);
+  const update: Record<string, unknown> = {};
+  if (Object.keys(set).length) update.$set = set;
+  if (Object.keys(unset).length) update.$unset = unset;
+  const user = Object.keys(update).length
+    ? await User.findByIdAndUpdate(userId, update, { new: true }).select('inboxInitial')
+    : await User.findById(userId).select('inboxInitial');
+  return effectiveInitial(user);
+}
 export const INBOX_SYNC_MAX_PER_RUN = () => Number(process.env.INBOX_SYNC_MAX_PER_RUN || 200);
 export const INBOX_RETENTION_DAYS = () => Number(process.env.INBOX_RETENTION_DAYS || 0);
 const SYNC_LOCK_MS = 5 * 60_000;
@@ -310,7 +341,7 @@ export async function ingestMessage(ownerId: mongoose.Types.ObjectId | string, o
 
 export interface SyncResult {
   skipped?: 'disabled' | 'locked' | 'not_connected';
-  mode?: 'initial' | 'history' | 'relist';
+  mode?: 'initial' | 'history' | 'relist' | 'backfill';
   fetched: number;
   created: number;
   newIds: string[];
@@ -338,6 +369,47 @@ async function acquireLock(userId: string): Promise<IUser | null> {
     { $set: { 'gmailRead.syncLockUntil': new Date(now.getTime() + SYNC_LOCK_MS) } },
     { new: true }
   );
+}
+
+async function listRecentInbox(client: GmailClient, days: number, max: number): Promise<{ refs: Array<{ id: string }>; capped: boolean }> {
+  const refs: Array<{ id: string }> = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await client.listMessages({ q: `newer_than:${days}d -in:spam -in:trash`, labelIds: ['INBOX'], maxResults: Math.min(PAGE_SIZE, max - refs.length), pageToken });
+    refs.push(...page.messages);
+    pageToken = page.nextPageToken;
+  } while (pageToken && refs.length < max);
+  return { refs, capped: !!pageToken };
+}
+
+// A manual, bounded pull over a window the owner chooses, after the initial
+// sync is done (before it, the ordinary sync applies the same choice). Each
+// already-stored message dedupes to nothing, so this is safe to repeat and
+// to widen; it never touches the history cursor.
+export async function backfillInbox(userId: string, input: { days?: number; max?: number } = {}): Promise<SyncResult> {
+  const base: SyncResult = { fetched: 0, created: 0, newIds: [], capped: false };
+  const pre = await User.findById(userId).select('gmailRead inboxInitial');
+  if (!pre?.gmailRead) return { ...base, skipped: 'not_connected' };
+  if (!pre.gmailRead.syncEnabled) return { ...base, skipped: 'disabled' };
+  if (!pre.gmailRead.initialSyncDone) return syncInbox(userId, { trigger: 'user' });
+  const user = await acquireLock(userId);
+  if (!user?.gmailRead) return { ...base, skipped: 'locked' };
+  const eff = effectiveInitial(pre);
+  const days = clampInt(typeof input.days === 'number' && Number.isFinite(input.days) ? input.days : eff.days, INITIAL_DAYS_BOUNDS);
+  const max = clampInt(typeof input.max === 'number' && Number.isFinite(input.max) ? input.max : eff.max, INITIAL_MAX_BOUNDS);
+  const result: SyncResult = { ...base, mode: 'backfill' };
+  try {
+    const client = makeGmailClient(await getValidReadAccessToken(userId));
+    const { refs, capped } = await listRecentInbox(client, days, max);
+    result.capped = capped;
+    Object.assign(result, await fetchAndIngest(client, userId, user.gmailRead.address, refs));
+  } catch (err) {
+    result.error = err instanceof Error ? err.message : String(err);
+  } finally {
+    await User.updateOne({ _id: userId }, { $set: { 'gmailRead.syncLockUntil': new Date(0) } });
+  }
+  for (let i = 0; i < result.newIds.length; i += 50) await enqueueClassify(userId, result.newIds.slice(i, i + 50));
+  return result;
 }
 
 async function fetchAndIngest(client: GmailClient, ownerId: string, ownAddress: string, refs: Array<{ id: string }>): Promise<{ fetched: number; created: number; newIds: string[] }> {
@@ -375,15 +447,9 @@ export async function syncInbox(userId: string, opts: { trigger?: 'scheduled' | 
 
     if (!grant.initialSyncDone) {
       result.mode = 'initial';
-      const refs: Array<{ id: string }> = [];
-      let pageToken: string | undefined;
-      const max = INBOX_INITIAL_MAX();
-      do {
-        const page = await client.listMessages({ q: `newer_than:${INBOX_INITIAL_DAYS()}d -in:spam -in:trash`, labelIds: ['INBOX'], maxResults: Math.min(PAGE_SIZE, max - refs.length), pageToken });
-        refs.push(...page.messages);
-        pageToken = page.nextPageToken;
-      } while (pageToken && refs.length < max);
-      result.capped = !!pageToken;
+      const { days, max } = effectiveInitial(user);
+      const { refs, capped } = await listRecentInbox(client, days, max);
+      result.capped = capped;
       Object.assign(result, await fetchAndIngest(client, userId, ownAddress, refs));
       if (!grant.historyId) patch['gmailRead.historyId'] = (await client.getProfile()).historyId;
       patch['gmailRead.initialSyncDone'] = true;
@@ -450,9 +516,10 @@ export async function syncInbox(userId: string, opts: { trigger?: 'scheduled' | 
 
 export async function inboxStatus(userId: string): Promise<{
   connected: boolean; address?: string; syncEnabled?: boolean; initialSyncDone?: boolean; lastSyncAt?: Date; lastSyncError?: string; grantedAt?: Date;
+  initial: { days: number; max: number; bounds: { days: typeof INITIAL_DAYS_BOUNDS; max: typeof INITIAL_MAX_BOUNDS } };
   counts: { total: number; unclassified: number; awaiting: number; processed: number };
 }> {
-  const user = await User.findById(userId).select('gmailRead');
+  const user = await User.findById(userId).select('gmailRead inboxInitial');
   const g = user?.gmailRead;
   const [total, unclassified, awaiting, processed] = await Promise.all([
     InboundMessage.countDocuments({ ownerId: userId }),
@@ -463,6 +530,7 @@ export async function inboxStatus(userId: string): Promise<{
   return {
     connected: !!g,
     address: g?.address, syncEnabled: g?.syncEnabled, initialSyncDone: g?.initialSyncDone, lastSyncAt: g?.lastSyncAt, lastSyncError: g?.lastSyncError, grantedAt: g?.grantedAt,
+    initial: { ...effectiveInitial(user), bounds: { days: INITIAL_DAYS_BOUNDS, max: INITIAL_MAX_BOUNDS } },
     counts: { total, unclassified, awaiting, processed },
   };
 }
