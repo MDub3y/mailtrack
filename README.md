@@ -106,6 +106,11 @@ Existing data that had been mismarked under both versions of the logic was recla
 
 MailTrack is two things that share one database: a sender that tracks what happens to its email, and a memory that remembers what those signals mean per contact. The model never sits between them. It reads the memory and proposes; a person decides; the deterministic parts do the rest.
 
+![MailTrack architecture](assets/architecture.svg)
+
+<details>
+<summary>The same picture as text</summary>
+
 ```
                          YOU                                    THE OTHER PERSON
                           │                                            │
@@ -157,6 +162,8 @@ MailTrack is two things that share one database: a sender that tracks what happe
    Every model call:  budget check ─▶ context receipt ─▶ schema ─▶ cited ids verified ─▶ run log
    Every correction:  a label, so evals, calibration and replay grow from use
 ```
+
+</details>
 
 Three lines that make the whole thing safe to run on your own mail:
 
@@ -375,7 +382,7 @@ npm run reclassify          # re-run the classifier over history under the curre
 
 ### Phase 4: the inbox, sorted before the model reads it
 
-- A second, separate Google permission (`gmail.readonly`, never bundled into the first connection, revocable from the **Triage** page) lets MailTrack read your INBOX: the last 30 days at first, then new mail every few minutes; never spam, trash, drafts, or sent. What is stored is small: sender, subject, a short excerpt with the quoted reply stripped.
+- A second, separate Google permission (`gmail.readonly`, never bundled into the first connection, revocable from the **Triage** page) lets MailTrack read your INBOX: an initial window you choose (how many days back, up to how many messages — defaults 30 days / 500, adjustable on the Triage page before consent and re-pullable after), then new mail every few minutes; never spam, trash, drafts, or sent. What is stored is small: sender, subject, a short excerpt with the quoted reply stripped.
 - Messages are sorted in tiers before any model sees them. Free header rules first: a reply in a thread MailTrack started (matched by thread id or the `Message-ID` that carries the tracking token), calendar invitations, list mail. Then the cheapest classifier your keys can serve: embeddings against a centroid per category when your provider has them, otherwise your cheap model choosing from your category list in batches of eight, otherwise a free local classifier.
 - Categories are yours to define in plain words, and each carries a policy for the expensive step: **never**, **ask**, or **auto**. Only replies to your tracked mail are automatic by default.
 - Changing a category is a correction: stored as a label and added to the target category as an example, so the cheap tier moves with you.

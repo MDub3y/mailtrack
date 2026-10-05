@@ -5,3 +5,4 @@ server/uploads/
 **/*.log
 .DS_Store
 .claude/
+server/.env.bak
