@@ -292,18 +292,18 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
 
 const AppRoutes = () => (
   <Routes>
-    {/* Public share page — no sidebar */}
+    {/* Public pages — standalone, never wrapped in the app chrome, logged in or not */}
     <Route path="/share/:token" element={<ShareView />} />
+    <Route path="/" element={<Landing />} />
+    <Route path="/login" element={<Login />} />
+    <Route path="/register" element={<Register />} />
 
-    {/* Everything else gets the Shell wrapper */}
+    {/* The dashboard: only these routes live inside the Shell (sidebar) */}
     <Route
       path="*"
       element={
         <Shell>
           <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
             <Route
               path="/sent"
               element={
