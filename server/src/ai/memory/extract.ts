@@ -15,7 +15,15 @@ export const ExtractionOutput = z.object({
   items: z.array(z.object({
     kind: z.enum(['fact', 'commitment', 'preference']),
     content: z.string().min(3).max(160),
-    structured: z.record(z.string(), z.unknown()).optional(),
+    // The prompt names exactly these keys (extractPrompt.ts); an open record
+    // compiles to a JSON-schema `propertyNames` that some providers' grammar
+    // engines (Nvidia) cannot build, so the schema states the contract.
+    structured: z.object({
+      by: z.enum(['sender', 'contact']).optional(),
+      dueAt: z.string().optional(),
+      topic: z.string().optional(),
+      about: z.string().optional(),
+    }).optional(),
     quote: z.string().min(3),
     confidence: z.number().min(0).max(1),
     supersedes: z.string().optional(),

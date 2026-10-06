@@ -16,7 +16,8 @@
     "eval:classifier": "ts-node src/ai/evals/classifier.ts",
     "eval:classification": "ts-node src/ai/evals/classification.ts",
     "replay": "ts-node src/ai/evals/replay.ts",
-    "reclassify": "ts-node src/scripts/reclassify.ts"
+    "reclassify": "ts-node src/scripts/reclassify.ts",
+    "eval:locomo": "ts-node src/scripts/locomoEval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",

@@ -184,6 +184,20 @@ export function openaiCompatProvider(name: CompatName, apiKey: string, baseURL?:
           throw err;
         }
 
+        // Some gateways (OpenRouter among them) deliver provider failures as a
+        // 200 whose body carries `error` and no `choices`. A schema-grammar
+        // rejection (e.g. Nvidia: "Unimplemented keys") degrades like any other
+        // unsupported feature — the prompt still carries the schema and Zod
+        // validates. Anything else surfaces with the provider's own message.
+        if (!completion?.choices?.length) {
+          const errBody = (completion as unknown as { error?: { message?: string; code?: number | string } })?.error;
+          const bodyMsg = `${errBody?.code ?? ''} ${errBody?.message ?? ''}`.trim();
+          if (/grammar error|unimplemented keys|propertynames|response_format|json_schema|structured output/i.test(bodyMsg) && !drop.has('json_schema')) {
+            drop.add('json_schema');
+            continue;
+          }
+          throw new Error(`provider returned no choices${bodyMsg ? `: ${bodyMsg}` : ''}`);
+        }
         const choice = completion.choices[0];
         const msg = choice?.message;
         const toolCalls: ToolCall[] = (msg?.tool_calls ?? [])
