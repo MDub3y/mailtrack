@@ -98,18 +98,23 @@ async function main(): Promise<void> {
     );
     const emailDocs = await Email.find({ senderId: ownerId }).sort({ createdAt: 1 }).select('_id direction').lean();
     const todo = emailDocs.filter((e) => !done.has(e._id.toString()));
-    console.log(`extract-missing: ${todo.length} of ${emailDocs.length} emails still need extraction`);
-    let extracted = 0, failures = 0;
-    for (let i = 0; i < todo.length; i++) {
-      try {
-        const r = await extractMemoryForEmail(todo[i]._id.toString(), (todo[i].direction as 'outbound' | 'inbound') ?? 'outbound');
-        if (r) extracted += r.extracted;
-      } catch (err) {
-        failures += 1;
-        console.error(`  extract failed: ${err instanceof Error ? err.message.slice(0, 140) : err}`);
+    const conc = Number(arg('extract-concurrency') ?? 1);
+    console.log(`extract-missing: ${todo.length} of ${emailDocs.length} emails still need extraction (concurrency ${conc})`);
+    let extracted = 0, failures = 0, finished = 0, next = 0;
+    await Promise.all(Array.from({ length: Math.min(conc, todo.length) }, async () => {
+      while (next < todo.length) {
+        const i = next++;
+        try {
+          const r = await extractMemoryForEmail(todo[i]._id.toString(), (todo[i].direction as 'outbound' | 'inbound') ?? 'outbound');
+          if (r) extracted += r.extracted;
+        } catch (err) {
+          failures += 1;
+          console.error(`  extract failed: ${err instanceof Error ? err.message.slice(0, 140) : err}`);
+        }
+        finished += 1;
+        process.stdout.write(`\rextract-missing ${finished}/${todo.length} | items ${extracted}, failures ${failures}   `);
       }
-      process.stdout.write(`\rextract-missing ${i + 1}/${todo.length} | items ${extracted}, failures ${failures}   `);
-    }
+    }));
     console.log();
     const pending = await Proposal.find({ ownerId, status: 'pending' }).select('_id');
     for (const p of pending) await decideProposal(p._id.toString(), ownerId.toString(), 'accept', { reason: 'locomo eval: scripted accept' });
@@ -165,12 +170,14 @@ async function main(): Promise<void> {
           createdAt,
         });
         created += 1;
-        try {
-          const r = await extractMemoryForEmail(email._id.toString(), outbound ? 'outbound' : 'inbound');
-          if (r) { extracted += r.extracted; dropped += r.droppedForQuote; }
-        } catch (err) {
-          failures += 1;
-          console.error(`  extract failed on ${key}#${t}: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+        if (!has('no-extract')) {
+          try {
+            const r = await extractMemoryForEmail(email._id.toString(), outbound ? 'outbound' : 'inbound');
+            if (r) { extracted += r.extracted; dropped += r.droppedForQuote; }
+          } catch (err) {
+            failures += 1;
+            console.error(`  extract failed on ${key}#${t}: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
+          }
         }
         process.stdout.write(`\r${key} ${t + 1}/${turns.length} | emails ${created}, items ${extracted}, quote-dropped ${dropped}, failures ${failures}   `);
       }
@@ -190,7 +197,10 @@ async function main(): Promise<void> {
   if (!contact) { console.error('no contact; run without --skip-ingest first'); process.exit(1); }
   const memories = await Memory.find({ ownerId, subjectId: contact._id, status: 'active' }).sort({ createdAt: 1 }).lean();
   console.log(`active memory for ${speakerB}: ${memories.length} items`);
-  const memoryLines = memories.map((m) => `- (${m.kind}, noted ${new Date(m.createdAt).toISOString().slice(0, 10)}) ${m.content}`).join('\n');
+  const memoryLines = memories.map((m) => {
+    const ev = (m.structured as { eventAt?: string } | undefined)?.eventAt;
+    return `- (${m.kind}, noted ${new Date(m.createdAt).toISOString().slice(0, 10)}${ev ? `, event date ${ev}` : ''}) ${m.content}`;
+  }).join('\n');
 
   type QaIdx = Qa & { idx: number };
   let qas: QaIdx[] = (sample.qa as Qa[]).map((q, idx) => ({ ...q, idx }));
@@ -209,15 +219,17 @@ async function main(): Promise<void> {
   const ckpt: Record<string, { category: number; f1: number; correct: boolean; pred?: string; gold?: string }> =
     fs.existsSync(ckptPath) ? JSON.parse(fs.readFileSync(ckptPath, 'utf8')) : {};
 
+  // QA reads a frozen memory and writes nothing, so questions run in a small
+  // concurrent pool; the checkpoint file is written from this one process.
   const AnswerOut = z.object({ answer: z.string() });
   const scores: Array<{ category: number; f1: number; correct: boolean; pred?: string; gold?: string }> = [];
-  let tokensUsed = 0, costUsd = 0;
-  for (let i = 0; i < qas.length; i++) {
-    const qa = qas[i];
-    if (ckpt[qa.idx]) { scores.push(ckpt[qa.idx]); continue; }
+  let tokensUsed = 0, costUsd = 0, doneCount = 0;
+  const QA_CONCURRENCY = Number(arg('qa-concurrency') ?? 5);
+  const answerOne = async (qa: QaIdx): Promise<void> => {
+    if (ckpt[qa.idx]) { scores.push(ckpt[qa.idx]); doneCount++; return; }
     const gold = String(qa.answer ?? 'No information in memory');
     const ctx = new ContextBuilder()
-      .add({ name: 'system', budgetTokens: 400, stable: true, text: `You answer questions about ${speakerB} using ONLY the memory notes provided. Answer in as few words as possible (a date, a name, a short phrase). If the notes do not contain the answer, reply exactly: No information in memory.` })
+      .add({ name: 'system', budgetTokens: 400, stable: true, text: `You answer questions about ${speakerB} using ONLY the memory notes provided. Answer in as few words as possible (a date, a name, a short phrase). For "when" questions prefer a note's event date over its noted date. An answer must be directly supported by a specific note; a partial or thematic match is NOT support. If no note directly contains the answer, reply exactly: No information in memory.` })
       .add({ name: 'memory', budgetTokens: 6000, stable: true, text: `Memory notes about ${speakerB} (from correspondence with ${speakerA}):\n${memoryLines}` })
       .add({ name: 'task', budgetTokens: 300, stable: false, text: `Question: ${qa.question}` })
       .build();
@@ -232,11 +244,18 @@ async function main(): Promise<void> {
       ckpt[qa.idx] = entry;
       fs.writeFileSync(ckptPath, JSON.stringify(ckpt));
       tokensUsed += (r.usage?.input ?? 0) + (r.usage?.output ?? 0); costUsd += r.costUsd ?? 0;
-      process.stdout.write(`\rQA ${i + 1}/${qas.length} | running acc ${(scores.filter((s) => s.correct).length / scores.length * 100).toFixed(0)}%   `);
     } catch (err) {
       scores.push({ category: qa.category, f1: 0, correct: false });
       console.error(`\n  qa failed: ${err instanceof Error ? err.message.slice(0, 120) : err}`);
     }
+    doneCount++;
+    process.stdout.write(`\rQA ${doneCount}/${qas.length} | running acc ${(scores.filter((s) => s.correct).length / Math.max(1, scores.length) * 100).toFixed(0)}%   `);
+  };
+  {
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(QA_CONCURRENCY, qas.length) }, async () => {
+      while (next < qas.length) { const i = next++; await answerOne(qas[i]); }
+    }));
   }
   console.log('\n');
 

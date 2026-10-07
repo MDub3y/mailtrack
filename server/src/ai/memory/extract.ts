@@ -21,6 +21,10 @@ export const ExtractionOutput = z.object({
     structured: z.object({
       by: z.enum(['sender', 'contact']).optional(),
       dueAt: z.string().optional(),
+      // When the text dates the event itself ("yesterday", "on the 7th"),
+      // resolved against the email's date. Session date ≠ event date; this
+      // is what temporal questions need (LoCoMo temporal: 5% without it).
+      eventAt: z.string().optional(),
       topic: z.string().optional(),
       about: z.string().optional(),
     }).optional(),
