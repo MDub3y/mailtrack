@@ -32,8 +32,10 @@ import { ContextBuilder } from '../ai/context/builder';
 // count as correct on an explicit "no information"), so re-scoring is free.
 
 process.env.AI_QUEUE_DISABLED = 'true';
-process.env.AI_DAILY_TOKENS_EXTRACT_MEMORY = process.env.AI_DAILY_TOKENS_EXTRACT_MEMORY || '5000000';
-process.env.AI_DAILY_TOKENS_JUDGE = process.env.AI_DAILY_TOKENS_JUDGE || '5000000';
+// Hard overrides: dotenv has already populated these from .env, and the
+// production ceilings (300k/day) refuse a 419-message benchmark halfway.
+process.env.AI_DAILY_TOKENS_EXTRACT_MEMORY = '20000000';
+process.env.AI_DAILY_TOKENS_JUDGE = '20000000';
 
 const OWNER_EMAIL = 'locomo@eval.local';
 
@@ -47,7 +49,11 @@ const arg = (name: string): string | undefined => {
 };
 const has = (name: string): boolean => process.argv.includes(`--${name}`);
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+// ISO dates and gold answers ("7 May 2023") must tokenise identically, or
+// the scorer marks a correct date wrong on format alone.
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const canonDates = (s: string) => s.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, mo, d) => `${Number(d)} ${MONTHS[Number(mo) - 1]} ${y}`);
+const norm = (s: string) => canonDates(s.toLowerCase()).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 const tokens = (s: string) => norm(s).split(' ').filter(Boolean);
 
 function f1(pred: string, gold: string): number {
@@ -81,6 +87,36 @@ async function main(): Promise<void> {
   let owner = await User.findOne({ email: OWNER_EMAIL });
   if (!owner) owner = await User.create({ name: speakerA, email: OWNER_EMAIL, emailAddress: OWNER_EMAIL, password: uuidv4() });
   const ownerId = owner._id;
+
+  // --extract-missing: re-run extraction for stored emails that have no
+  // succeeded extract run (after a budget refusal or a crash), oldest first,
+  // then accept what landed as proposals. Replaces the ingest phase.
+  if (has('extract-missing')) {
+    const done = new Set<string>(
+      (await AgentRun.find({ ownerId, kind: 'extract_memory', status: 'succeeded' }).select('inputRefs').lean())
+        .flatMap((r) => ((r as { inputRefs?: { emailIds?: string[] } }).inputRefs?.emailIds ?? []))
+    );
+    const emailDocs = await Email.find({ senderId: ownerId }).sort({ createdAt: 1 }).select('_id direction').lean();
+    const todo = emailDocs.filter((e) => !done.has(e._id.toString()));
+    console.log(`extract-missing: ${todo.length} of ${emailDocs.length} emails still need extraction`);
+    let extracted = 0, failures = 0;
+    for (let i = 0; i < todo.length; i++) {
+      try {
+        const r = await extractMemoryForEmail(todo[i]._id.toString(), (todo[i].direction as 'outbound' | 'inbound') ?? 'outbound');
+        if (r) extracted += r.extracted;
+      } catch (err) {
+        failures += 1;
+        console.error(`  extract failed: ${err instanceof Error ? err.message.slice(0, 140) : err}`);
+      }
+      process.stdout.write(`\rextract-missing ${i + 1}/${todo.length} | items ${extracted}, failures ${failures}   `);
+    }
+    console.log();
+    const pending = await Proposal.find({ ownerId, status: 'pending' }).select('_id');
+    for (const p of pending) await decideProposal(p._id.toString(), ownerId.toString(), 'accept', { reason: 'locomo eval: scripted accept' });
+    console.log(`extract-missing done: ${extracted} new items, ${failures} failures, accepted ${pending.length} proposals`);
+    await mongoose.disconnect();
+    return;
+  }
 
   if (!has('skip-ingest')) {
     if (!has('resume')) {
@@ -156,21 +192,29 @@ async function main(): Promise<void> {
   console.log(`active memory for ${speakerB}: ${memories.length} items`);
   const memoryLines = memories.map((m) => `- (${m.kind}, noted ${new Date(m.createdAt).toISOString().slice(0, 10)}) ${m.content}`).join('\n');
 
-  let qas: Qa[] = sample.qa;
+  type QaIdx = Qa & { idx: number };
+  let qas: QaIdx[] = (sample.qa as Qa[]).map((q, idx) => ({ ...q, idx }));
   if (qaLimit > 0) {
     // Stratified: keep the category mix of the full set.
-    const byCat = new Map<number, Qa[]>();
+    const byCat = new Map<number, QaIdx[]>();
     qas.forEach((q) => byCat.set(q.category, [...(byCat.get(q.category) ?? []), q]));
-    const picked: Qa[] = [];
+    const picked: QaIdx[] = [];
     for (const [, list] of byCat) picked.push(...list.slice(0, Math.max(1, Math.round((list.length / qas.length) * qaLimit))));
     qas = picked.slice(0, qaLimit);
   }
 
+  // Scored questions checkpoint to a file next to the data, so an interrupted
+  // QA pass resumes instead of restarting; delete the file for a fresh score.
+  const ckptPath = arg('checkpoint') ?? `${dataPath}.conv${convIndex}.qa.json`;
+  const ckpt: Record<string, { category: number; f1: number; correct: boolean; pred?: string; gold?: string }> =
+    fs.existsSync(ckptPath) ? JSON.parse(fs.readFileSync(ckptPath, 'utf8')) : {};
+
   const AnswerOut = z.object({ answer: z.string() });
-  const scores: Array<{ category: number; f1: number; correct: boolean }> = [];
+  const scores: Array<{ category: number; f1: number; correct: boolean; pred?: string; gold?: string }> = [];
   let tokensUsed = 0, costUsd = 0;
   for (let i = 0; i < qas.length; i++) {
     const qa = qas[i];
+    if (ckpt[qa.idx]) { scores.push(ckpt[qa.idx]); continue; }
     const gold = String(qa.answer ?? 'No information in memory');
     const ctx = new ContextBuilder()
       .add({ name: 'system', budgetTokens: 400, stable: true, text: `You answer questions about ${speakerB} using ONLY the memory notes provided. Answer in as few words as possible (a date, a name, a short phrase). If the notes do not contain the answer, reply exactly: No information in memory.` })
@@ -178,12 +222,15 @@ async function main(): Promise<void> {
       .add({ name: 'task', budgetTokens: 300, stable: false, text: `Question: ${qa.question}` })
       .build();
     try {
-      const r = await runAgent({ kind: 'judge', ownerId, model: 'extractor', context: ctx, outputSchema: AnswerOut, maxTokens: 2000 });
+      const r = await runAgent({ kind: 'judge', ownerId, model: 'extractor', context: ctx, outputSchema: AnswerOut, maxTokens: 6000 });
       const pred = r.output.answer;
       const isAdversarial = qa.category === 5;
       const score = f1(pred, gold);
       const correct = isAdversarial ? NO_INFO.test(pred) : (score >= 0.5 || norm(pred).includes(norm(gold)) || norm(gold).includes(norm(pred)));
-      scores.push({ category: qa.category, f1: isAdversarial ? (correct ? 1 : 0) : score, correct });
+      const entry = { category: qa.category, f1: isAdversarial ? (correct ? 1 : 0) : score, correct, pred, gold };
+      scores.push(entry);
+      ckpt[qa.idx] = entry;
+      fs.writeFileSync(ckptPath, JSON.stringify(ckpt));
       tokensUsed += (r.usage?.input ?? 0) + (r.usage?.output ?? 0); costUsd += r.costUsd ?? 0;
       process.stdout.write(`\rQA ${i + 1}/${qas.length} | running acc ${(scores.filter((s) => s.correct).length / scores.length * 100).toFixed(0)}%   `);
     } catch (err) {
