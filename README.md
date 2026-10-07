@@ -426,6 +426,18 @@ npm run replay -- --kind draft_follow_up --variant draft.v2 --judge        # a v
 npm run replay -- --drift                                                  # this week's sample of every kind
 ```
 
+### Measured against LoCoMo
+
+The memory pipeline was run, unmodified, against conversation 0 of [LoCoMo](https://github.com/snap-research/locomo) (419 turns replayed as email: the owner's turns trusted, the contact's untrusted and proposed; a scripted accept stands in for the human). All 199 questions are then answered from stored active memory only — the model never sees the conversation — and scored with deterministic token-F1 (stricter than the LLM-judge scoring behind most published numbers, so compare shapes, not absolutes). `npm run eval:locomo`.
+
+| run | extractor / memory | answerer | overall | single-hop | multi-hop | temporal | open-dom. | adversarial |
+|---|---|---|---|---|---|---|---|---|
+| 1 | nemotron (free), no date resolution | nemotron | **40.2%** | 53% | 28% | 5% | 38% | 57% |
+| 2 | gpt-oss-120b, dates resolved | gpt-oss-120b | 34.7% | 44% | 34% | **24%** | 15% | 34% |
+| 3 | gpt-oss-120b, dates resolved | nemotron | 32.7% | 46% | 25% | **22%** | 15% | 32% |
+
+What the three runs isolate: teaching the extractor to resolve relative time words against the email's date ("yesterday" → "7 May 2023", in the content and as `structured.eventAt`) took temporal recall from 5% to 22–24% **independent of the answering model** — that fix shipped. The regressions between run 1 and run 3 track the *extraction* model swap, not the answerer (runs 2 vs 3, same memory, differ little): gpt-oss extracted a leaner memory (677 active items vs 758) that costs single-hop coverage and weakens abstention support. Total cost of all three runs and every failed experiment along the way: **$0.47**. Each run's predictions are checkpointed, so re-scoring is free.
+
 ### What it cannot do
 
 - Send anything, or change what is remembered, from behind any door or by any model.
