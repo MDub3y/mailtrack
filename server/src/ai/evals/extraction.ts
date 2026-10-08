@@ -6,6 +6,7 @@ import { User } from '../../models/User';
 import { ContextBuilder } from '../context/builder';
 import { runAgent } from '../runAgent';
 import { ExtractionOutput, quoteAppearsIn } from '../memory/extract';
+import { verifyEntailment } from '../memory/entailment';
 import { EXTRACTION_SYSTEM } from '../memory/extractPrompt';
 
 // Extraction eval (doc/03-implementation-phases.md, Phase 1): a golden set of
@@ -64,6 +65,7 @@ async function main(): Promise<void> {
   const model = arg('--model') || 'extractor';
 
   let expectedTotal = 0, found = 0, quotesTotal = 0, quotesValid = 0, noise = 0, totalCost = 0;
+  let entailmentChecked = 0, entailmentRefused = 0;
   const rows: string[] = [];
 
   for (const c of GOLDEN) {
@@ -82,6 +84,17 @@ async function main(): Promise<void> {
 
     const valid = items.filter((i) => quoteAppearsIn(i.quote, c.email));
     quotesTotal += items.length; quotesValid += valid.length;
+
+    // Third verification level, measured: of the items whose quote IS in the
+    // email, how many does the entailment judge refuse? That refusal rate is
+    // the cited-but-unsupported rate — what would have been stored untrue.
+    if (valid.length && process.env.AI_VERIFY_ENTAILMENT !== 'false') {
+      try {
+        const { verdicts } = await verifyEntailment(user._id, valid as never, '2026-09-15');
+        const refused = verdicts.filter((v) => !v).length;
+        entailmentChecked += valid.length; entailmentRefused += refused;
+      } catch { /* judge unavailable: rate simply not measured for this case */ }
+    }
     let hit = 0;
     for (const e of c.expect) {
       expectedTotal += 1;
@@ -98,6 +111,7 @@ async function main(): Promise<void> {
   console.log(`recall (expected items found): ${found}/${expectedTotal} = ${(100 * found / Math.max(1, expectedTotal)).toFixed(0)}%`);
   console.log(`quote validity: ${quotesValid}/${quotesTotal} = ${(100 * quotesValid / Math.max(1, quotesTotal)).toFixed(0)}%`);
   console.log(`noise items (beyond per-case cap): ${noise}`);
+  if (entailmentChecked) console.log(`cited-but-unsupported (verbatim quote, claim not entailed): ${entailmentRefused}/${entailmentChecked} = ${(100 * entailmentRefused / entailmentChecked).toFixed(0)}% — these are dropped, not stored`);
   console.log(`cost: $${totalCost.toFixed(4)}`);
   await mongoose.disconnect();
 }

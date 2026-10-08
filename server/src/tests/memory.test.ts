@@ -25,6 +25,7 @@ const BODY = "Hi Priya,\n\nThanks for the call. I'll send the revised quote by F
 
 before(async () => { await connectTestDb(); });
 beforeEach(async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'false'; // existing tests script one turn per extraction; entailment tests switch it on themselves
   await resetTestDb();
   process.env.AI_ENABLED = 'true';
   process.env.AI_TRUST_POLICY_ENABLED = 'false';
@@ -86,6 +87,57 @@ test('extraction: verified quotes go active by policy, fabricated quotes are dro
   assert.deepEqual(proposals.map((p) => p.status).sort(), ['auto_accepted', 'auto_accepted', 'pending']);
   assert.match(proposals.find((p) => p.status === 'auto_accepted')!.reason!, /memory policy: sender's own words/);
   assert.equal(await Label.countDocuments({ labeledBy: 'policy', verdict: 'accepted' }), 2);
+});
+
+test('entailment gate: a verbatim quote that does not support its claim is dropped and counted; the judge sees pairs, not the email', async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'true';
+  const { contact, email } = await sentEmail();
+  const fake = fakeProvider([
+    { json: { items: [
+      { kind: 'commitment', content: 'You promised Priya a revised quote by Friday.', structured: { by: 'sender', dueAt: '2026-09-18' }, quote: "I'll send the revised quote by Friday", confidence: 0.92 },
+      // The quote IS in the email, but it does not support the claim: cited-but-unsupported.
+      { kind: 'fact', content: 'Priya signed the contract.', structured: { topic: 'contract' }, quote: 'Thanks for the call', confidence: 0.9 },
+    ] } },
+    { json: { verdicts: [{ i: 0, entailed: true }, { i: 1, entailed: false }] } },
+  ], { name: 'anthropic' });
+  __setProviderForTests(fake);
+
+  const result = await extractMemoryForEmail(email._id.toString());
+  assert.ok(result);
+  assert.equal(result!.droppedForEntailment, 1);
+  assert.equal(result!.entailmentVerified, true);
+  assert.equal(result!.applied.activated.length, 1);
+  const items = await Memory.find({ subjectId: contact._id }).lean();
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, 'commitment');
+
+  // The judge's context carries claim/quote pairs only — never the email body,
+  // so support has to come from the quote itself.
+  assert.equal(fake.requests.length, 2);
+  const judgeText = fake.requests[1].messages.map((m) => (m as { text?: string }).text ?? '').join('\n');
+  assert.match(judgeText, /CLAIM \(fact\): Priya signed the contract/);
+  assert.doesNotMatch(judgeText, /evaluating vendors/);
+});
+
+test('entailment gate fails closed: when the judge cannot run, items are kept but nothing auto-activates', async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'true';
+  const { contact, email } = await sentEmail();
+  // One scripted turn only: the extraction succeeds, the judge call exhausts
+  // the script and throws — the provider being down, in miniature.
+  __setProviderForTests(fakeProvider([
+    { json: { items: [
+      { kind: 'commitment', content: 'You promised Priya a revised quote by Friday.', structured: { by: 'sender' }, quote: "I'll send the revised quote by Friday", confidence: 0.95 },
+    ] } },
+  ]));
+
+  const result = await extractMemoryForEmail(email._id.toString());
+  assert.ok(result);
+  assert.equal(result!.entailmentVerified, false);
+  assert.equal(result!.droppedForEntailment, 0);
+  assert.equal(result!.applied.activated.length, 0);
+  assert.equal(result!.applied.proposed.length, 1);
+  const items = await Memory.find({ subjectId: contact._id }).lean();
+  assert.deepEqual(items.map((m) => m.status), ['proposed']);
 });
 
 test('extraction from a reply is untrusted: wrapped, capped confidence, always proposed', async () => {

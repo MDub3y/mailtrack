@@ -41,6 +41,7 @@ before(async () => {
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 beforeEach(async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'false';
   await resetTestDb();
   process.env.AI_ENABLED = 'true';
   process.env.AI_TRUST_POLICY_ENABLED = 'false';

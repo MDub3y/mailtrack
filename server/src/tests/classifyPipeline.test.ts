@@ -33,6 +33,7 @@ before(async () => {
   await connectTestDb();
 });
 beforeEach(async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'false';
   await resetTestDb();
   __setProviderForTests(null);
   await User.create({ _id: owner, email: 'me@example.com', emailAddress: 'me@example.com', password: 'x', name: 'Me', gmailAddress: 'me@gmail.com' });

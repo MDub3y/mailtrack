@@ -6,6 +6,7 @@ import { ContextBuilder, wrapUntrusted } from '../context/builder';
 import { runAgent } from '../runAgent';
 import { applyExtraction, ApplyExtractionResult, ExtractedItem } from './policy';
 import { EXTRACTION_SYSTEM } from './extractPrompt';
+import { verifyEntailment } from './entailment';
 
 // Turns one email into memory items (doc/02-ai-architecture.md §1.4).
 // The one guard that matters: every item must quote a span that actually
@@ -52,6 +53,12 @@ export interface ExtractResult {
   runId: string;
   extracted: number;
   droppedForQuote: number;
+  // The third verification level: quote present but not supporting the
+  // claim. Dropped, and counted — this is the cited-but-unsupported rate.
+  droppedForEntailment: number;
+  // False when the entailment judge could not run; items are then kept but
+  // never auto-accepted (fail closed on autonomy, not on memory).
+  entailmentVerified: boolean;
   applied: ApplyExtractionResult;
 }
 
@@ -120,14 +127,31 @@ export async function extractMemoryForEmail(emailId: string, direction: 'outboun
     kept.push(item);
   }
 
+  // Third verification level: the quote must SUPPORT the claim, not merely
+  // appear in the email. Non-entailed items are dropped and counted. If the
+  // judge itself cannot run, fail closed on autonomy: keep the items but
+  // strip `trusted`, so nothing from this email auto-activates.
+  let items = kept;
+  let droppedForEntailment = 0;
+  let entailmentVerified = true;
+  if (kept.length > 0 && process.env.AI_VERIFY_ENTAILMENT !== 'false') {
+    try {
+      const { verdicts } = await verifyEntailment(email.senderId, kept, email.createdAt.toISOString().slice(0, 10));
+      items = kept.filter((_, i) => verdicts[i]);
+      droppedForEntailment = kept.length - items.length;
+    } catch {
+      entailmentVerified = false;
+    }
+  }
+
   const applied = await applyExtraction({
     ownerId: email.senderId,
     contactId,
     emailId: email._id,
     runId: new (await import('mongoose')).default.Types.ObjectId(result.runId),
-    items: kept,
-    trusted,
+    items,
+    trusted: trusted && entailmentVerified,
   });
 
-  return { runId: result.runId, extracted: result.output.items.length, droppedForQuote, applied };
+  return { runId: result.runId, extracted: result.output.items.length, droppedForQuote, droppedForEntailment, entailmentVerified, applied };
 }

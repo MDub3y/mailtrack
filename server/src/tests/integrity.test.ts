@@ -49,7 +49,8 @@ before(async () => {
   await new Promise<void>((r) => server.listen(0, r));
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
-beforeEach(async () => { await resetTestDb(); invalidateRuleCache(); process.env.AI_ENABLED = 'true'; process.env.AI_TRUST_POLICY_ENABLED = 'false'; process.env.AI_MODEL_PRIMARY = 'anthropic:claude-opus-5'; __setProviderForTests(null); });
+beforeEach(async () => {
+  process.env.AI_VERIFY_ENTAILMENT = 'false'; await resetTestDb(); invalidateRuleCache(); process.env.AI_ENABLED = 'true'; process.env.AI_TRUST_POLICY_ENABLED = 'false'; process.env.AI_MODEL_PRIMARY = 'anthropic:claude-opus-5'; __setProviderForTests(null); });
 after(async () => { __setProviderForTests(null); await new Promise<void>((r) => server.close(() => r())); await disconnectTestDb(); });
 
 async function emailWithOpens(opens: Array<{ ua: string; ms: number }>, to = 'p@x.com') {
