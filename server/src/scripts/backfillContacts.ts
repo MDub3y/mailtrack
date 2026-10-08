@@ -29,6 +29,7 @@ async function main(): Promise<void> {
 
     for (let i = 0; i < email.events.length; i++) {
       const ev = email.events[i];
+      if (ev.type === 'dispatching') continue; // the outbox claim is bookkeeping, not a signal
       const type = ev.type === 'opened' ? 'open' : ev.type === 'clicked' ? 'link_click' : ev.type;
       // Same keys the live paths use (queues/emailQueue.ts, routes/track.ts),
       // so a backfill over already-tracked email adds nothing twice: opens

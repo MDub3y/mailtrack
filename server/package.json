@@ -18,7 +18,8 @@
     "replay": "ts-node src/ai/evals/replay.ts",
     "reclassify": "ts-node src/scripts/reclassify.ts",
     "eval:locomo": "ts-node src/scripts/locomoEval.ts",
-    "eval:injection": "ts-node src/ai/evals/injection.ts"
+    "eval:injection": "ts-node src/ai/evals/injection.ts",
+    "mpp:report": "ts-node src/scripts/mppMeasure.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",

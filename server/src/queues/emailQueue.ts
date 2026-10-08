@@ -59,6 +59,27 @@ function pixelUrlFor(trackingToken: string): string {
   return `${baseUrl}/api/track/${trackingToken}/pixel.png`;
 }
 
+// ---------------------------------------------------------------- chaos seams
+// The exactly-once guarantees are proved by killing the worker at labelled
+// points and re-running the job the way BullMQ redelivery would. The kill
+// hook throws at one named point then disarms; the dispatcher override lets
+// the test count provider calls without a provider.
+let killAt: string | null = null;
+export function __setKillPointForTests(point: string | null): void { killAt = point; }
+function maybeKill(point: string): void {
+  if (killAt === point) { killAt = null; throw new Error(`chaos: worker killed at ${point}`); }
+}
+let dispatcherForTests: typeof dispatchEmail | null = null;
+export function __setDispatcherForTests(fn: typeof dispatchEmail | null): void { dispatcherForTests = fn; }
+const dispatch: typeof dispatchEmail = (...args) => (dispatcherForTests ?? dispatchEmail)(...args);
+
+// The subset of a BullMQ Job the processors actually use, so chaos tests can
+// drive them without a queue.
+export interface JobLike<T> { data: T; id?: string; updateProgress(p: number): Promise<void> }
+
+const AMBIGUOUS_REASON = 'crashed during dispatch; outcome unknown — not retried, to avoid a possible duplicate send';
+const hasDispatchClaim = (email: IEmail): boolean => email.events.some((e) => e.type === 'dispatching');
+
 // The outgoing copy: attachment links (attributed via the tracking token)
 // then the pixel. The stored htmlBody is never changed.
 function outgoingBodies(email: Pick<IEmail, 'htmlBody' | 'textBody' | 'attachments' | 'trackingToken'>): { html: string; text: string; links: TrackedLinkOut[] } {
@@ -125,32 +146,68 @@ async function markFailed(email: IEmail, reason: string): Promise<void> {
   }
 }
 
-async function processSingleSend(job: Job<SingleEmailJob>): Promise<void> {
+export async function processSingleSend(job: JobLike<SingleEmailJob>): Promise<void> {
   const email = await Email.findById(job.data.emailId);
   if (!email) return;
+  maybeKill('single:loaded');
+
+  // Redelivery after the work completed: nothing to do.
+  if (email.status === 'delivered' || email.status === 'opened') return;
+  // Redelivery after a crash inside the dispatch window: the provider call
+  // may or may not have gone out, and email has no idempotent way to ask.
+  // Surface it instead of guessing — a visible failure beats a duplicate.
+  if (email.status === 'sent' && hasDispatchClaim(email)) {
+    await markFailed(email, AMBIGUOUS_REASON);
+    return;
+  }
+  if (email.status === 'failed') return;
 
   await attachContact(email);
+  maybeKill('single:contact');
   const { html, text, links } = outgoingBodies(email);
   if (links.length && !email.trackedLinks?.length) {
     email.trackedLinks = links.map((l) => ({ ...l, clickCount: 0 }));
     await email.save();
   }
-  const dispatched = await dispatchEmail(email.senderId.toString(), {
-    to: email.to,
-    subject: email.subject,
-    html,
-    text,
-    trackingToken: email.trackingToken,
-  });
+  maybeKill('single:before_claim');
+  // The outbox claim: written durably before the provider call. A clean
+  // provider error clears it (we KNOW nothing went out, so BullMQ may
+  // retry); only a crash leaves it behind, which is exactly the ambiguity
+  // the claim exists to surface.
+  email.events.push({ type: 'dispatching', timestamp: new Date() } as IEmail['events'][number]);
+  await email.save();
+  let dispatched: DispatchResult;
+  try {
+    dispatched = await dispatch(email.senderId.toString(), {
+      to: email.to,
+      subject: email.subject,
+      html,
+      text,
+      trackingToken: email.trackingToken,
+    });
+  } catch (err) {
+    email.events = email.events.filter((e) => e.type !== 'dispatching') as IEmail['events'];
+    await email.save();
+    throw err;
+  }
+  maybeKill('single:after_dispatch');
   await markDelivered(email, dispatched, { extract: true });
+  maybeKill('single:after_delivered');
 }
 
-async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult> {
+export async function processBulkSend(job: JobLike<BulkEmailJob>): Promise<BulkEmailResult> {
   const { senderId, senderEmailAddress, recipients, subject, htmlBody, textBody } = job.data;
   const now = new Date();
   const result: BulkEmailResult = { sent: 0, failed: 0, errors: [] };
   const selfAddress = senderEmailAddress.toLowerCase().trim();
   const deliveredIds: string[] = [];
+
+  // Resume on redelivery: everything this job already created is keyed by
+  // (bulkJobId, bulkIndex), so a retried job continues instead of sending
+  // the earlier recipients a second time.
+  const jobKey = job.id ? String(job.id) : `nojob-${now.getTime()}`;
+  const prior = new Map<number, IEmail>();
+  for (const e of await Email.find({ senderId, bulkJobId: jobKey })) prior.set(e.bulkIndex ?? -1, e);
 
   for (let i = 0; i < recipients.length; i++) {
     const addr = recipients[i].toLowerCase().trim();
@@ -162,12 +219,25 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
         continue;
       }
 
+      const seen = prior.get(i);
+      if (seen) {
+        if (seen.status === 'delivered' || seen.status === 'opened') { deliveredIds.push(seen._id.toString()); result.sent++; continue; }
+        if (seen.status === 'failed') { result.failed++; continue; }
+        if (hasDispatchClaim(seen)) {
+          // Crashed inside this recipient's dispatch window on the previous
+          // attempt: outcome unknown, never re-send.
+          await markFailed(seen, AMBIGUOUS_REASON);
+          result.failed++;
+          result.errors.push(`${addr}: ${AMBIGUOUS_REASON}`);
+          continue;
+        }
+        // Created but never claimed: safe to dispatch using the same record.
+      }
+
       // Best-effort: if the address happens to belong to a platform User,
       // link it so the in-app inbox feature still works for them.
-      const recipient = await User.findOne({ emailAddress: addr });
-      const trackingToken = uuidv4();
-
-      const email = await Email.create({
+      const recipient = seen ? null : await User.findOne({ emailAddress: addr });
+      const email = seen ?? await Email.create({
         senderId,
         recipientId: recipient?._id,
         from: senderEmailAddress,
@@ -175,24 +245,32 @@ async function processBulkSend(job: Job<BulkEmailJob>): Promise<BulkEmailResult>
         subject,
         htmlBody,
         textBody,
-        trackingToken,
+        trackingToken: uuidv4(),
         status: 'sent',
         events: [{ type: 'sent', timestamp: now }],
+        bulkJobId: jobKey,
+        bulkIndex: i,
       });
+      maybeKill('bulk:after_create');
       await attachContact(email);
       const { html, text } = outgoingBodies(email);
 
       try {
-        const dispatched = await dispatchEmail(senderId, { to: addr, subject, html, text, trackingToken });
+        email.events.push({ type: 'dispatching', timestamp: new Date() } as IEmail['events'][number]);
+        await email.save();
+        const dispatched = await dispatch(senderId, { to: addr, subject, html, text, trackingToken: email.trackingToken });
+        maybeKill('bulk:after_dispatch');
         await markDelivered(email, dispatched, { extract: false });
         deliveredIds.push(email._id.toString());
         result.sent++;
       } catch (sendErr) {
+        if (String(sendErr).startsWith('Error: chaos')) throw sendErr; // a kill is a crash, not a provider failure
         await markFailed(email, String(sendErr));
         result.failed++;
         result.errors.push(`${addr}: ${String(sendErr)}`);
       }
     } catch (err) {
+      if (String(err).startsWith('Error: chaos')) throw err; // a kill is a crash, not a recipient failure
       result.failed++;
       result.errors.push(`${addr}: ${String(err)}`);
     }

@@ -7,7 +7,10 @@ export interface ITrackedLink {
 }
 
 export type EmailStatus = 'sent' | 'delivered' | 'opened' | 'failed' | 'received';
-export type EventType = 'sent' | 'delivered' | 'opened' | 'failed' | 'clicked';
+// 'dispatching' is the outbox claim: written just before the provider call,
+// so a crash between dispatch and the delivered record is detectable on
+// retry (and resolved as "outcome unknown" instead of a duplicate send).
+export type EventType = 'sent' | 'delivered' | 'opened' | 'failed' | 'clicked' | 'dispatching';
 
 export interface IEmailEvent {
   type: EventType;
@@ -32,6 +35,10 @@ export interface IEmail extends Document {
   textBody: string;
   status: EmailStatus;
   events: IEmailEvent[];
+  // Bulk sends: which queue job created this email and at which recipient
+  // index, so a retried job resumes instead of re-sending everyone.
+  bulkJobId?: string;
+  bulkIndex?: number;
   attachments: Array<{ documentId: string; name: string; shareUrl: string }>;
   trackingToken: string;
   openCount: number;
@@ -84,6 +91,8 @@ const EmailSchema = new Schema<IEmail>({
     default: 'sent',
   },
   events: { type: [EmailEventSchema], default: [] },
+  bulkJobId: { type: String },
+  bulkIndex: { type: Number },
   attachments: {
     type: [new Schema({ documentId: String, name: String, shareUrl: String }, { _id: false })],
     default: [],

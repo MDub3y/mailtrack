@@ -13,6 +13,7 @@ The claims are measured, not asserted:
 | extracted memory items whose quote is found verbatim in the source email | **92–100%** across runs — and the misses are **dropped, not stored** |
 | verbatim-quoted items whose claim the quote does **not** support, caught by the entailment gate | **24%** (4/17 on the golden set) — **dropped, not stored**; this is what unverified memory systems keep |
 | hostile payloads that changed forbidden state (20 payloads × 3 live channels: planted memory, verdict corruption, auto-accept, send) | **0/60** — 33 landed as *pending proposals*, held for human review |
+| duplicate sends across worker crashes at 8 kill points (outbox claim + resumable bulk, in CI) | **0** — an ambiguous crash surfaces as "outcome unknown", never a silent re-send |
 | real opens wrongly suppressed by the open classifier (14 labelled events) | **0** (precision 100%; the residual it can't catch is [disclosed](#phase-3-signal-integrity)) |
 | inbox classification on the 38-message golden set (free model, $0) | **38/38** |
 | LoCoMo memory benchmark — three runs, regressions included | [table below](#measured-against-locomo) |
