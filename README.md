@@ -1,8 +1,29 @@
-# MailTrack
+# Proofbox
 
-Send a real email to anyone, and know when they open it. Then remember what happened, per contact, with the source for every fact, and let the model help only where you can see exactly what it saw.
+[![CI](https://github.com/MDub3y/proofbox/actions/workflows/ci.yml/badge.svg)](https://github.com/MDub3y/proofbox/actions/workflows/ci.yml)
 
-MailTrack dispatches actual email — through a user's own connected Gmail account, or through a company's own SendGrid account for enterprise customers — and tracks opens with an invisible pixel embedded in the message. The sender's dashboard updates within a few seconds of the recipient opening it, no refresh needed.
+**Memory systems store what the model says. Proofbox stores only what it can prove.**
+
+Proofbox is an outbox that remembers: it sends real email (through your own Gmail, or your organisation's SendGrid), tracks what happens to it honestly, and builds a typed memory of every contact in which **every fact carries the verbatim quote and the email it came from — or it is not stored.** Extraction, classification, drafting: each model output is a proposal a person accepts, each acceptance is a label the system learns from, and nothing a model produces ever changes state by itself.
+
+The claims are measured, not asserted:
+
+| what's measured | result |
+|---|---|
+| extracted memory items whose quote is found verbatim in the source email | **92–100%** across runs — and the misses are **dropped, not stored** |
+| verbatim-quoted items whose claim the quote does **not** support, caught by the entailment gate | **24%** (4/17 on the golden set) — **dropped, not stored**; this is what unverified memory systems keep |
+| hostile payloads that changed forbidden state (20 payloads × 3 live channels: planted memory, verdict corruption, auto-accept, send) | **0/60** — 33 landed as *pending proposals*, held for human review |
+| real opens wrongly suppressed by the open classifier (14 labelled events) | **0** (precision 100%; the residual it can't catch is [disclosed](#phase-3-signal-integrity)) |
+| inbox classification on the 38-message golden set (free model, $0) | **38/38** |
+| LoCoMo memory benchmark — three runs, regressions included | [table below](#measured-against-locomo) |
+
+Three invariants make it safe to run on your own mail:
+
+- **The model is never on a hot path.** The tracking pixel, the click redirect, and sending are deterministic code. A test fails the build if they ever import the AI layer.
+- **Nothing the model produces changes state by itself.** Memory items, briefs, drafts, classifier rules: each is a proposal you accept, edit, or reject — and each decision is stored as a label that the evals, the calibration table, and replay grow from.
+- **Text from other people is data, not instructions.** Replies, inbound mail, and webhook payloads reach a model only inside a delimited untrusted block, and anything extracted from them is proposed, never active.
+
+The sender's dashboard updates within a few seconds of the recipient opening a message, no refresh needed.
 
 https://github.com/user-attachments/assets/5fd8e10d-a6af-4c9a-b232-187eed54c941
 
@@ -15,11 +36,11 @@ https://github.com/user-attachments/assets/5fd8e10d-a6af-4c9a-b232-187eed54c941
 
 ### Send from your own Gmail account
 
-Connect your Google account once (standard "Allow access" screen, same as any "Sign in with Google" button). From then on, emails you send through MailTrack are dispatched through the Gmail API using your own token — so they're genuinely from your address, land in your own Gmail Sent folder, and pass DKIM/SPF/DMARC properly. No SMTP setup, no app passwords.
+Connect your Google account once (standard "Allow access" screen, same as any "Sign in with Google" button). From then on, emails you send through Proofbox are dispatched through the Gmail API using your own token — so they're genuinely from your address, land in your own Gmail Sent folder, and pass DKIM/SPF/DMARC properly. No SMTP setup, no app passwords.
 
 ### Open tracking
 
-A unique 1×1 tracking pixel is embedded in every outgoing email. When the recipient opens it and their mail client loads images, the pixel fires and MailTrack records the first-open time, open count, and (best-effort) the recipient's IP/user-agent. The status on your Sent page flips from `sent` → `delivered` → `opened` automatically.
+A unique 1×1 tracking pixel is embedded in every outgoing email. When the recipient opens it and their mail client loads images, the pixel fires and Proofbox records the first-open time, open count, and (best-effort) the recipient's IP/user-agent. The status on your Sent page flips from `sent` → `delivered` → `opened` automatically.
 
 ### Enterprise tier
 
@@ -57,7 +78,7 @@ already authenticated)           yes → Send via Gmail API
                           Gmail or join an org
 ```
 
-Either way, a tracking pixel is injected into the HTML before the message goes out, pointing back at MailTrack's own server. Nothing about tracking depends on which path sent the email.
+Either way, a tracking pixel is injected into the HTML before the message goes out, pointing back at Proofbox's own server. Nothing about tracking depends on which path sent the email.
 
 ---
 
@@ -104,9 +125,9 @@ Existing data that had been mismarked under both versions of the logic was recla
 
 ## Architecture
 
-MailTrack is two things that share one database: a sender that tracks what happens to its email, and a memory that remembers what those signals mean per contact. The model never sits between them. It reads the memory and proposes; a person decides; the deterministic parts do the rest.
+Proofbox is two things that share one database: a sender that tracks what happens to its email, and a memory that remembers what those signals mean per contact. The model never sits between them. It reads the memory and proposes; a person decides; the deterministic parts do the rest.
 
-![MailTrack architecture](assets/architecture.svg)
+![Proofbox architecture](assets/architecture.svg)
 
 <details>
 <summary>The same picture as text</summary>
@@ -165,11 +186,7 @@ MailTrack is two things that share one database: a sender that tracks what happe
 
 </details>
 
-Three lines that make the whole thing safe to run on your own mail:
-
-- **The model is never on a hot path.** The tracking pixel, the click redirect, and sending are deterministic code. A test fails the build if they ever import the AI layer, and the AI layer can never import the send path.
-- **Nothing the model produces changes state by itself.** A memory item, a brief, a draft, a classifier rule: each is a proposal you accept, edit, or reject, and each decision is stored as a label. A reversible kind can earn auto-accept from your own decisions, never a draft.
-- **Text from other people is data, not instructions.** Replies, inbound mail, and webhook payloads reach a model only inside a delimited untrusted block, and anything extracted from them is proposed, never active.
+The three invariants at the top of this README are enforced here: the import-boundary test, the proposal/label loop, and the untrusted block. A reversible kind can earn auto-accept from your own decisions — never a draft.
 
 ### How one signal becomes memory
 
@@ -382,8 +399,8 @@ npm run reclassify          # re-run the classifier over history under the curre
 
 ### Phase 4: the inbox, sorted before the model reads it
 
-- A second, separate Google permission (`gmail.readonly`, never bundled into the first connection, revocable from the **Triage** page) lets MailTrack read your INBOX: an initial window you choose (how many days back, up to how many messages — defaults 30 days / 500, adjustable on the Triage page before consent and re-pullable after), then new mail every few minutes; never spam, trash, drafts, or sent. What is stored is small: sender, subject, a short excerpt with the quoted reply stripped.
-- Messages are sorted in tiers before any model sees them. Free header rules first: a reply in a thread MailTrack started (matched by thread id or the `Message-ID` that carries the tracking token), calendar invitations, list mail. Then the cheapest classifier your keys can serve: embeddings against a centroid per category when your provider has them, otherwise your cheap model choosing from your category list in batches of eight, otherwise a free local classifier.
+- A second, separate Google permission (`gmail.readonly`, never bundled into the first connection, revocable from the **Triage** page) lets Proofbox read your INBOX: an initial window you choose (how many days back, up to how many messages — defaults 30 days / 500, adjustable on the Triage page before consent and re-pullable after), then new mail every few minutes; never spam, trash, drafts, or sent. What is stored is small: sender, subject, a short excerpt with the quoted reply stripped.
+- Messages are sorted in tiers before any model sees them. Free header rules first: a reply in a thread Proofbox started (matched by thread id or the `Message-ID` that carries the tracking token), calendar invitations, list mail. Then the cheapest classifier your keys can serve: embeddings against a centroid per category when your provider has them, otherwise your cheap model choosing from your category list in batches of eight, otherwise a free local classifier.
 - Categories are yours to define in plain words, and each carries a policy for the expensive step: **never**, **ask**, or **auto**. Only replies to your tracked mail are automatic by default.
 - Changing a category is a correction: stored as a label and added to the target category as an example, so the cheap tier moves with you.
 - A reply in a tracked thread records a reply signal the moment it is sorted, whatever its policy. An out-of-office never does. When the model does read a message, it is extracted as untrusted text, so nothing it says becomes memory until you accept it.
@@ -408,7 +425,7 @@ npm run eval:classification -- --backend all  # + embeddings, when the key's pro
 - **Memory that can leave:** one markdown file per contact, or for all of them.
 
 ```bash
-claude mcp add --transport http mailtrack http://localhost:5000/api/mcp --header "Authorization: Bearer <token from Integrations>"
+claude mcp add --transport http proofbox http://localhost:5000/api/mcp --header "Authorization: Bearer <token from Integrations>"
 ```
 
 ### Phase 6: replay, trust, clicks, sharing

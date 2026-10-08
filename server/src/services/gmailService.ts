@@ -168,7 +168,7 @@ function assertNoHeaderInjection(value: string, field: string): void {
 // The Message-ID we set carries the tracking token, so a reply's In-Reply-To
 // or References header identifies the tracked email with no API call.
 export function rfcMessageIdFor(trackingToken: string, fromAddress: string): string {
-  const domain = fromAddress.split('@')[1] || 'mailtrack.local';
+  const domain = fromAddress.split('@')[1] || 'proofbox.local';
   return `<mt-${trackingToken}@${domain}>`;
 }
 

@@ -74,11 +74,11 @@ test('one contact: brief, items with sources and dates, timeline without automat
 
   await ensureContact(owner, 'sam@example.com');
   const all = await renderAllContactsMarkdown(owner);
-  assert.match(all, /^# MailTrack memory export\n\n2 contacts, exported/);
+  assert.match(all, /^# Proofbox memory export\n\n2 contacts, exported/);
   assert.match(all, /\n---\n\n## Priya <priya@example.com>\n/);
   assert.match(all, /### Commitments/);
   assert.match(all, /## sam@example.com\n[\s\S]*_No brief yet\._/);
   const allRes = await fetch(`${base}/api/contacts/export.md`, { headers: { Authorization: `Bearer ${tokenFor(owner)}` } });
   assert.equal(allRes.status, 200);
-  assert.match(allRes.headers.get('content-disposition')!, /mailtrack-memory-\d{4}-\d{2}-\d{2}\.md/);
+  assert.match(allRes.headers.get('content-disposition')!, /proofbox-memory-\d{4}-\d{2}-\d{2}\.md/);
 });

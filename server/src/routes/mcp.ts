@@ -8,7 +8,7 @@ import { verifyApiToken, TOKEN_PREFIX } from '../services/apiTokenService';
 // session), authenticated with the owner's token in the Authorization
 // header (a login token or the 90-day read token from /api/integrations).
 //
-//   claude mcp add --transport http mailtrack http://localhost:5000/api/mcp --header "Authorization: Bearer <token>"
+//   claude mcp add --transport http proofbox http://localhost:5000/api/mcp --header "Authorization: Bearer <token>"
 
 const router = Router();
 
@@ -25,7 +25,7 @@ async function ownerFrom(req: Request): Promise<string | null> {
 
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   const ownerId = await ownerFrom(req);
-  if (!ownerId) { res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized: send a MailTrack token as a Bearer header' }, id: null }); return; }
+  if (!ownerId) { res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Unauthorized: send a Proofbox token as a Bearer header' }, id: null }); return; }
   const server = createMcpServer(ownerId);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => { transport.close().catch(() => {}); server.close().catch(() => {}); });

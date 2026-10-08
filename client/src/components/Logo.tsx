@@ -24,7 +24,7 @@ export const Logo = () => {
                     MXDUB
                 </span>
                 <span className="text-xl font-semibold tracking-tight text-white mt-1">
-                    MailTrack
+                    Proofbox
                 </span>
             </div>
         </Link>

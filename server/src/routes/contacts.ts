@@ -41,7 +41,7 @@ router.get('/export.md', async (req: AuthRequest, res: Response): Promise<void> 
   try {
     const md = await renderAllContactsMarkdown(req.userId!);
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="mailtrack-memory-${new Date().toISOString().slice(0, 10)}.md"`);
+    res.setHeader('Content-Disposition', `attachment; filename="proofbox-memory-${new Date().toISOString().slice(0, 10)}.md"`);
     res.send(md);
   } catch (err) {
     console.error('Export error:', err);

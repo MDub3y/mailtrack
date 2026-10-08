@@ -17,7 +17,7 @@ import { decideProposal } from '../ai/corrections';
 import { runAgent } from '../ai/runAgent';
 import { ContextBuilder } from '../ai/context/builder';
 
-// LoCoMo (Maharana et al., 2024) run through the real MailTrack pipeline.
+// LoCoMo (Maharana et al., 2024) run through the real Proofbox pipeline.
 // Each conversation's speaker A becomes the owner, speaker B a contact; each
 // dated session becomes an email thread, each turn one Email (outbound for
 // the owner, inbound/untrusted for the contact). Extraction runs per email
@@ -261,7 +261,7 @@ async function main(): Promise<void> {
 
   // ---- report --------------------------------------------------------------
   const by = (cat: number) => scores.filter((s) => s.category === cat);
-  console.log(`== LoCoMo conv ${convIndex} (${speakerA} & ${speakerB}) through the MailTrack memory pipeline`);
+  console.log(`== LoCoMo conv ${convIndex} (${speakerA} & ${speakerB}) through the Proofbox memory pipeline`);
   console.log(`questions: ${scores.length}  overall accuracy: ${(scores.filter((s) => s.correct).length / scores.length * 100).toFixed(1)}%  mean F1: ${(scores.reduce((a, s) => a + s.f1, 0) / scores.length).toFixed(3)}`);
   for (const cat of [4, 1, 2, 3, 5]) {
     const g = by(cat);

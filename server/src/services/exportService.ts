@@ -34,7 +34,7 @@ export async function renderContactMarkdown(ownerId: string | mongoose.Types.Obj
   const out: string[] = [];
   out.push(`# ${c.displayName ? `${c.displayName} <${c.address}>` : c.address}`);
   out.push('');
-  out.push(`Exported from MailTrack on ${stamp(new Date())}. Sent ${c.stats.sent}, opened ${c.stats.opened}, replied ${c.stats.replied}, document views ${c.stats.docViews}.${c.lastSignalAt ? ` Last activity ${day(c.lastSignalAt)}.` : ''}`);
+  out.push(`Exported from Proofbox on ${stamp(new Date())}. Sent ${c.stats.sent}, opened ${c.stats.opened}, replied ${c.stats.replied}, document views ${c.stats.docViews}.${c.lastSignalAt ? ` Last activity ${day(c.lastSignalAt)}.` : ''}`);
   out.push('');
 
   out.push('## Brief');
@@ -84,7 +84,7 @@ export async function renderContactMarkdown(ownerId: string | mongoose.Types.Obj
 
 export async function renderAllContactsMarkdown(ownerId: string | mongoose.Types.ObjectId): Promise<string> {
   const contacts = await Contact.find({ ownerId }).sort({ lastSignalAt: -1, createdAt: -1 }).limit(500).select('_id').lean();
-  const parts: string[] = [`# MailTrack memory export\n\n${contacts.length} contact${contacts.length === 1 ? '' : 's'}, exported ${stamp(new Date())}.\n`];
+  const parts: string[] = [`# Proofbox memory export\n\n${contacts.length} contact${contacts.length === 1 ? '' : 's'}, exported ${stamp(new Date())}.\n`];
   for (const c of contacts) {
     const md = await renderContactMarkdown(ownerId, c._id);
     if (md) parts.push(md.replace(/^# /, '## ').replace(/^## (Brief|Commitments|Preferences|Facts|Engagement|Timeline)$/gm, '### $1'));

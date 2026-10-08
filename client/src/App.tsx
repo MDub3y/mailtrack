@@ -56,7 +56,7 @@ const Shell = ({ children }: { children: React.ReactNode; }) => {
                 MXDUB
               </span>
               <span className="text-base font-semibold tracking-tight text-[#0f172a] mt-0.5">
-                MailTrack
+                Proofbox
               </span>
             </div>
           </div>

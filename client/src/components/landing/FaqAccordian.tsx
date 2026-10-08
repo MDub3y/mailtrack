@@ -7,14 +7,14 @@ interface FAQItem {
 
 const faqs: FAQItem[] = [
     {
-        question: 'What exactly does MailTrack do?',
+        question: 'What exactly does Proofbox do?',
         answer:
-            'MailTrack is a full-stack internal email and document tracking platform. It closes the loop by providing instant read receipts within 4 seconds, queue-based mass emailing with BullMQ + Redis, and password-protected PDF sharing with viewer analytics.',
+            'Proofbox is a full-stack internal email and document tracking platform. It closes the loop by providing instant read receipts within 4 seconds, queue-based mass emailing with BullMQ + Redis, and password-protected PDF sharing with viewer analytics.',
     },
     {
         question: 'How do 4-second open receipts work without external tracking pixels?',
         answer:
-            'Because MailTrack manages sender, receiver, and storage endpoints natively, opening an email immediately triggers req.userId verification and PATCH /open. The sender UI silently polls every 4 seconds and updates the status badge automatically.',
+            'Because Proofbox manages sender, receiver, and storage endpoints natively, opening an email immediately triggers req.userId verification and PATCH /open. The sender UI silently polls every 4 seconds and updates the status badge automatically.',
     },
     {
         question: 'How does Mass Emailing handle large lists?',

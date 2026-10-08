@@ -60,12 +60,12 @@ export const Landing = () => {
 
     const faqs = [
         {
-            q: 'What exactly does MailTrack do?',
-            a: 'MailTrack provides full-stack email delivery tracking, 4-second instant read receipts, BullMQ mass email queues, and password-protected PDF document sharing with view analytics.',
+            q: 'What exactly does Proofbox do?',
+            a: 'Proofbox provides full-stack email delivery tracking, 4-second instant read receipts, BullMQ mass email queues, and password-protected PDF document sharing with view analytics.',
         },
         {
             q: 'How do read receipts work without pixel blocking?',
-            a: 'MailTrack natively handles client-side email detail views. Opening an email fires an authenticated PATCH request that updates the email status to "opened" and notifies the sender in real-time.',
+            a: 'Proofbox natively handles client-side email detail views. Opening an email fires an authenticated PATCH request that updates the email status to "opened" and notifies the sender in real-time.',
         },
         {
             q: 'Is my document sharing secure?',
@@ -141,7 +141,7 @@ export const Landing = () => {
                             <span className="size-3 rounded-full bg-yellow-500 inline-block" />
                             <span className="size-3 rounded-full bg-green-500 inline-block" />
                             <span className="ml-2 text-xs font-mono text-gray-400">
-                                MailTrack Control Center — Live Polling (4s)
+                                Proofbox Control Center — Live Polling (4s)
                             </span>
                         </div>
                         <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-emerald-950/60 text-emerald-400 border border-neutral-800">
@@ -437,7 +437,7 @@ export const Landing = () => {
                             </ul>
                         </div>
                         <a
-                            href="mailto:sales@mailtrack.corp"
+                            href="mailto:sales@proofbox.corp"
                             className="block rounded-xl px-6 py-2.5 text-center text-sm font-medium border border-neutral-800 bg-neutral-950 text-white hover:bg-neutral-800 transition duration-200 mt-8 w-full"
                         >
                             Contact sales
@@ -459,7 +459,7 @@ export const Landing = () => {
                             Scale securely with confidence
                         </h2>
                         <p className="text-sm font-medium text-gray-300 mt-4 leading-relaxed">
-                            MailTrack protects all document and email paths. Passwords use bcrypt hashing (cost 12), PDF view tokens use short-lived 2-hour JWTs, and search inputs are ReDoS-escaped server-side.
+                            Proofbox protects all document and email paths. Passwords use bcrypt hashing (cost 12), PDF view tokens use short-lived 2-hour JWTs, and search inputs are ReDoS-escaped server-side.
                         </p>
                         <Link
                             to="/register"

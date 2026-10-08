@@ -139,7 +139,7 @@ export const Footer = () => {
                 {/* ---------------- BOTTOM CLEAN COPYRIGHT ROW ---------------- */}
                 <div className="flex flex-col items-center justify-between px-6 py-6 md:flex-row gap-4">
                     <p className="text-xs text-gray-400 font-mono">
-                        © 2026 MailTrack by{' '}
+                        © 2026 Proofbox by{' '}
                         <a
                             href="https://mxdub.vercel.app/"
                             target="_blank"

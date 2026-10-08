@@ -11,7 +11,7 @@ const INVITE_SUBJECT = /^\s*(invitation|updated invitation|accepted|declined|ten
 export function preClassify(msg: ClassifiableMessage): ClassificationResult | null {
   const h = msg.headers;
   if (msg.matchedTracked) {
-    return { id: msg.id, categoryKey: REPLY_KEY, confidence: 1, backend: 'headers', reason: 'in a thread MailTrack started' };
+    return { id: msg.id, categoryKey: REPLY_KEY, confidence: 1, backend: 'headers', reason: 'in a thread Proofbox started' };
   }
   if (h.hasCalendarPart || INVITE_SUBJECT.test(msg.subject)) {
     return { id: msg.id, categoryKey: 'calendar_or_meeting', confidence: 0.95, backend: 'headers', reason: h.hasCalendarPart ? 'calendar part' : 'invitation subject' };

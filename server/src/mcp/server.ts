@@ -36,7 +36,7 @@ function memoryView(m: { _id: mongoose.Types.ObjectId; kind: string; content: st
 }
 
 export function createMcpServer(ownerId: string): McpServer {
-  const server = new McpServer({ name: 'mailtrack', version: '1.0.0' }, { instructions: 'Read-only memory about the owner\'s email contacts: briefs, sourced memory items, human-verdict timelines, the follow-through queue, and open commitments. Nothing here sends or changes anything.' });
+  const server = new McpServer({ name: 'proofbox', version: '1.0.0' }, { instructions: 'Read-only memory about the owner\'s email contacts: briefs, sourced memory items, human-verdict timelines, the follow-through queue, and open commitments. Nothing here sends or changes anything.' });
 
   server.registerTool('contact_brief', {
     title: 'Contact brief',

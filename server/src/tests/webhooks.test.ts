@@ -120,9 +120,9 @@ test('outbound: signed envelopes for every stored signal with its verdict; a tes
   assert.equal(ping.status, 200, JSON.stringify(ping.json));
   assert.equal(received.length, 1);
   const p = received[0];
-  assert.equal(p.headers['x-mailtrack-event'], 'ping');
-  assert.ok(verifySignature(secret, p.headers['x-mailtrack-signature'] as string, p.body));
-  assert.equal(verifySignature('wrong', p.headers['x-mailtrack-signature'] as string, p.body), false);
+  assert.equal(p.headers['x-proofbox-event'], 'ping');
+  assert.ok(verifySignature(secret, p.headers['x-proofbox-signature'] as string, p.body));
+  assert.equal(verifySignature('wrong', p.headers['x-proofbox-signature'] as string, p.body), false);
   assert.equal(verifySignature(secret, `t=${Math.floor(Date.now() / 1000) - 1000},v1=${sign(secret, String(Math.floor(Date.now() / 1000) - 1000), p.body)}`, p.body), false); // stale
 
   // Signals fan out after the write, with the verdict attached; automated ones too, honestly labelled.
@@ -138,8 +138,8 @@ test('outbound: signed envelopes for every stored signal with its verdict; a tes
   assert.deepEqual(bodies.map((b) => [b.event, b.data.type, b.data.integrity.verdict, b.data.contact.address]), [['signal.recorded', 'open', 'automated', 'priya@example.com'], ['signal.recorded', 'reply', 'human', 'priya@example.com']]);
   assert.equal(bodies[0].ownerId, owner.toString());
   assert.equal(bodies[0].data.emailId, email._id.toString());
-  assert.ok(received.every((r) => verifySignature(secret, r.headers['x-mailtrack-signature'] as string, r.body)));
-  assert.ok(received.every((r) => typeof r.headers['x-mailtrack-delivery'] === 'string'));
+  assert.ok(received.every((r) => verifySignature(secret, r.headers['x-proofbox-signature'] as string, r.body)));
+  assert.ok(received.every((r) => typeof r.headers['x-proofbox-delivery'] === 'string'));
 
   // Another owner's signals never reach this endpoint.
   const other = new mongoose.Types.ObjectId();

@@ -108,7 +108,7 @@ router.delete('/outbound/:id', async (req: AuthRequest, res: Response): Promise<
 // POST /api/integrations/outbound/:id/test — a signed ping, delivered now.
 router.post('/outbound/:id/test', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const r = await deliverToEndpoint(req.userId!, req.params.id, { id: `ping-${Date.now()}`, event: 'ping', at: new Date().toISOString(), ownerId: req.userId!, data: { message: 'MailTrack webhook test' } });
+    const r = await deliverToEndpoint(req.userId!, req.params.id, { id: `ping-${Date.now()}`, event: 'ping', at: new Date().toISOString(), ownerId: req.userId!, data: { message: 'Proofbox webhook test' } });
     res.status(r.ok ? 200 : 502).json(r);
   } catch (err) { res.status(400).json({ message: err instanceof Error ? err.message : String(err) }); }
 });

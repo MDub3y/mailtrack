@@ -68,7 +68,7 @@ router.post('/email', async (req: AuthRequest, res: Response): Promise<void> => 
     const to = identity.mode === 'gmail' ? identity.fromAddress : user.email;
     const view = await buildDigest(req.userId!, { since: parsed.data.since ? new Date(parsed.data.since) : undefined });
     const text = renderDigestText(view);
-    const subject = `MailTrack digest, ${view.now.toISOString().slice(0, 10)}${view.hasSomething ? '' : ': nothing new'}`;
+    const subject = `Proofbox digest, ${view.now.toISOString().slice(0, 10)}${view.hasSomething ? '' : ': nothing new'}`;
     await dispatchEmail(req.userId!, { to, subject, html: renderDigestHtml(view, parsed.data.headline), text: parsed.data.headline ? `${parsed.data.headline}\n\n${text}` : text });
     res.json({ sent: true, to, subject });
   } catch (err) { fail(res, err); }

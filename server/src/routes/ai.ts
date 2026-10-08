@@ -121,7 +121,7 @@ router.post('/settings/test', async (req: AuthRequest, res: Response): Promise<v
   try {
     // The embedder task is not a chat model: test it with one short embedding.
     if (model === 'embedder') {
-      const r = await runEmbedding({ ownerId: req.userId!, model, inputs: ['MailTrack connection test'], inputRefs: { note: 'settings test' } });
+      const r = await runEmbedding({ ownerId: req.userId!, model, inputs: ['Proofbox connection test'], inputRefs: { note: 'settings test' } });
       res.json({ ok: true, runId: r.runId, provider: r.provider, model: r.model, usage: r.usage, costUsd: r.costUsd, degraded: [], dimensions: r.dimensions });
       return;
     }

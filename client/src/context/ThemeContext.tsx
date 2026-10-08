@@ -11,7 +11,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode; }> = ({ children }) => {
     const [theme, setTheme] = useState<Theme>(() => {
-        const saved = localStorage.getItem('mailtrack-theme') as Theme;
+        const saved = localStorage.getItem('proofbox-theme') as Theme;
         if (saved) return saved;
         return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     });
@@ -27,7 +27,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode; }> = ({ childr
             root.classList.remove('dark');
             root.style.colorScheme = 'light';
         }
-        localStorage.setItem('mailtrack-theme', theme);
+        localStorage.setItem('proofbox-theme', theme);
     }, [theme]);
 
     const toggleTheme = () => {

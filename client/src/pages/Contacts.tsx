@@ -33,7 +33,7 @@ export const Contacts = () => {
       <div className="px-8 py-6 border-b border-[#eaedf1] flex items-end justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-[#0f172a]">Contacts</h1>
-          <p className="text-xs text-[#64748b] mt-1">Everyone you have written to, and what MailTrack remembers about them.</p>
+          <p className="text-xs text-[#64748b] mt-1">Everyone you have written to, and what Proofbox remembers about them.</p>
         </div>
         <input
           className="w-64 rounded-lg border border-[#eaedf1] bg-[#ffffff] px-3 py-2 text-xs text-[#0f172a] placeholder:text-[#94a3b8] focus:outline-none focus:border-[#F17463]"

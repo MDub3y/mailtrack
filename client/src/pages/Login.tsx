@@ -40,7 +40,7 @@ export const Login = () => {
             MXDUB
           </span>
           <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a] mt-1">
-            Welcome back to MailTrack
+            Welcome back to Proofbox
           </h1>
           <p className="text-xs text-[#64748b] mt-1">Enter your details to sign in</p>
         </div>

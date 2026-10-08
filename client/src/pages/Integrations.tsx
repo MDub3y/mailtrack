@@ -48,7 +48,7 @@ export const Integrations = () => {
   if (error) return <div className="p-8 text-xs text-[#991b1b]">{error}</div>;
   if (!view) return <div className="p-8 text-xs text-[#64748b]">Loading…</div>;
 
-  const mcpConfig = `claude mcp add --transport http mailtrack ${view.mcp.url} --header "Authorization: Bearer ${mcpToken ?? '<token>'}"`;
+  const mcpConfig = `claude mcp add --transport http proofbox ${view.mcp.url} --header "Authorization: Bearer ${mcpToken ?? '<token>'}"`;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -65,7 +65,7 @@ export const Integrations = () => {
           <div className="mt-2"><button className={btn} disabled={busy !== null} onClick={() => { if (confirm('Rotate the inbound secret? Systems using the old URL will get 404.')) run('rotate', async () => { await integrationsApi.rotateInbound(); }, 'Rotated.'); }}>Rotate secret</button></div>
         </Section>
 
-        <Section title="Decisions out" blurb="Your endpoints receive a signed JSON envelope for every stored signal, with its integrity verdict attached, and for follow-through items that appear or resolve. Verify the X-MailTrack-Signature header (HMAC-SHA256 over `timestamp.body` with the secret shown once at creation). After 20 consecutive failures an endpoint pauses itself.">
+        <Section title="Decisions out" blurb="Your endpoints receive a signed JSON envelope for every stored signal, with its integrity verdict attached, and for follow-through items that appear or resolve. Verify the X-Proofbox-Signature header (HMAC-SHA256 over `timestamp.body` with the secret shown once at creation). After 20 consecutive failures an endpoint pauses itself.">
           {view.outbound.length === 0 ? <div className="text-[11px] text-[#94a3b8] mb-2">No endpoints yet.</div> : (
             <ul className="space-y-2 mb-3">
               {view.outbound.map((e) => (
@@ -95,7 +95,7 @@ export const Integrations = () => {
             </ul>
           )}
           <div className="flex items-center gap-2">
-            <input className={input} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hooks/mailtrack" />
+            <input className={input} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hooks/proofbox" />
             <label className="text-[11px] text-[#64748b] flex items-center gap-1"><input type="checkbox" checked={events.signal} onChange={(e) => setEvents((v) => ({ ...v, signal: e.target.checked }))} /> signals</label>
             <label className="text-[11px] text-[#64748b] flex items-center gap-1"><input type="checkbox" checked={events.queue} onChange={(e) => setEvents((v) => ({ ...v, queue: e.target.checked }))} /> queue</label>
             <button className={btn} disabled={busy !== null || !/^https?:\/\//.test(url) || (!events.signal && !events.queue)} onClick={() => run('add', async () => {
@@ -127,7 +127,7 @@ export const Integrations = () => {
         </Section>
 
         <Section title="Export" blurb="One markdown file: every contact's brief, each remembered item with its source and date, and the timeline of what people actually did. Memory that can leave is memory you own. Single contacts export from their own page.">
-          <button className={btn} disabled={busy !== null} onClick={() => run('export', async () => { const r = await contactsApi.exportAll(); downloadBlob(r.data, `mailtrack-memory-${new Date().toISOString().slice(0, 10)}.md`); })}>Download all contacts (.md)</button>
+          <button className={btn} disabled={busy !== null} onClick={() => run('export', async () => { const r = await contactsApi.exportAll(); downloadBlob(r.data, `proofbox-memory-${new Date().toISOString().slice(0, 10)}.md`); })}>Download all contacts (.md)</button>
         </Section>
       </div>
     </div>

@@ -11,7 +11,7 @@ interface Props {
 }
 
 const eventLabel: Record<string, { label: string; color: string; }> = {
-  sent: { label: 'Sent to MailTrack Engine', color: '#64748b' },
+  sent: { label: 'Sent to Proofbox Engine', color: '#64748b' },
   delivered: { label: 'Delivered to Inbound MX', color: '#16a34a' },
   opened: { label: 'Opened by Recipient', color: '#2563eb' },
   clicked: { label: 'Link Clicked', color: '#7c3aed' },

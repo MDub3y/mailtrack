@@ -8,7 +8,7 @@ import { CategoryDef, FALLBACK_KEY, REPLY_KEY } from './types';
 export const DEFAULT_CATEGORIES: Array<Omit<CategoryDef, 'policy'> & { policy: CategoryPolicy; order: number }> = [
   {
     key: REPLY_KEY, name: 'Reply to my email', order: 10, policy: 'auto',
-    description: 'A person answering an email I sent through MailTrack, in the same thread.',
+    description: 'A person answering an email I sent through Proofbox, in the same thread.',
     examples: ['Thanks for sending the proposal, a couple of questions on pricing.', 'Thursday works for me, send the contract over.', 'Got it, I will confirm headcount by Friday.'],
   },
   {

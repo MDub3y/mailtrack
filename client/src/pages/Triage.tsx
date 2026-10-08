@@ -110,7 +110,7 @@ const ConsentBanner = ({ status, onChanged }: { status: InboxStatusView; onChang
         {result === 'error' && <div className="font-medium">Google returned an error. Try again.</div>}
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="font-medium">Let MailTrack read your inbox to sort it and catch replies.</div>
+            <div className="font-medium">Let Proofbox read your inbox to sort it and catch replies.</div>
             <div className="text-amber-700 mt-0.5">
               A separate, read-only Google permission. What is read: INBOX mail only (never spam, trash, drafts or sent) — the {windowInputs} at first, then new mail every few minutes. What is stored: sender, subject, and a short excerpt. What the model sees: only categories you allow, and only as untrusted text. Revoke here at any time.
             </div>

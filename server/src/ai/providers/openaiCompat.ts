@@ -165,7 +165,7 @@ export function openaiCompatProvider(name: CompatName, apiKey: string, baseURL?:
   const client = clientForTests ?? new OpenAI({
     apiKey: apiKey || 'not-needed', // local endpoints often need no key but the SDK insists on a string
     ...(resolvedBase ? { baseURL: resolvedBase } : {}),
-    ...(name === 'openrouter' ? { defaultHeaders: { 'HTTP-Referer': 'https://github.com/MDub3y/mailtrack', 'X-Title': 'MailTrack' } } : {}),
+    ...(name === 'openrouter' ? { defaultHeaders: { 'HTTP-Referer': 'https://github.com/MDub3y/proofbox', 'X-Title': 'Proofbox' } } : {}),
   });
 
   return {

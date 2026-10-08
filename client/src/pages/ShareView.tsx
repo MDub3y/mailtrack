@@ -80,7 +80,7 @@ export const ShareView = () => {
       <div className="min-h-screen bg-[#ffffff] flex flex-col">
         <header className="px-6 py-4 border-b border-[#eaedf1] bg-[#ffffff] flex items-center justify-between">
           <span className="text-xs font-mono font-bold tracking-[0.2em] text-[#F17463] uppercase">
-            MXDUB MailTrack
+            MXDUB Proofbox
           </span>
         </header>
         <div className="flex-1 flex items-center justify-center p-6">
@@ -98,7 +98,7 @@ export const ShareView = () => {
       <div className="min-h-screen bg-[#ffffff] flex flex-col">
         <header className="px-6 py-4 border-b border-[#eaedf1] bg-[#ffffff]">
           <span className="text-xs font-mono font-bold tracking-[0.2em] text-[#F17463] uppercase">
-            MXDUB MailTrack
+            MXDUB Proofbox
           </span>
         </header>
         <div className="flex-1 flex items-center justify-center text-xs font-mono text-[#94a3b8]">
@@ -123,7 +123,7 @@ export const ShareView = () => {
       <div className="flex flex-col h-screen bg-[#ffffff]">
         <header className="px-6 py-3.5 border-b border-[#eaedf1] bg-[#ffffff] flex items-center justify-between">
           <span className="text-xs font-mono font-bold tracking-[0.2em] text-[#F17463] uppercase">
-            MXDUB MailTrack
+            MXDUB Proofbox
           </span>
           <span className="text-xs font-semibold text-[#0f172a] truncate max-w-md">
             {documentName}
@@ -140,7 +140,7 @@ export const ShareView = () => {
     <div className="min-h-screen bg-[#ffffff] flex flex-col">
       <header className="px-6 py-4 border-b border-[#eaedf1] bg-[#ffffff]">
         <span className="text-xs font-mono font-bold tracking-[0.2em] text-[#F17463] uppercase">
-          MXDUB MailTrack
+          MXDUB Proofbox
         </span>
       </header>
 

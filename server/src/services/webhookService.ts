@@ -121,7 +121,7 @@ export async function deliverToEndpoint(ownerId: string | mongoose.Types.ObjectI
   try {
     const res = await fetch(ep.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'MailTrack-Webhook/1', 'X-MailTrack-Event': envelope.event, 'X-MailTrack-Delivery': envelope.id, 'X-MailTrack-Signature': `t=${ts},v1=${sign(ep.secret, ts, body)}` },
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Proofbox-Webhook/1', 'X-Proofbox-Event': envelope.event, 'X-Proofbox-Delivery': envelope.id, 'X-Proofbox-Signature': `t=${ts},v1=${sign(ep.secret, ts, body)}` },
       body,
       signal: AbortSignal.timeout(OUTBOUND_TIMEOUT_MS),
     });

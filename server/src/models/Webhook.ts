@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 // Per-owner integration settings (doc/05, Elevation 1): one inbound secret
 // that lets outside systems add signals about a contact, and any number of
-// outbound endpoints that receive what MailTrack decided.
+// outbound endpoints that receive what Proofbox decided.
 
 export type OutboundEvent = 'signal' | 'queue';
 export const OUTBOUND_EVENTS: OutboundEvent[] = ['signal', 'queue'];

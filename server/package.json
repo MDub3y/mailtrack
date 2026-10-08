@@ -1,5 +1,5 @@
 {
-  "name": "emailservice-server",
+  "name": "proofbox-server",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "eval:classification": "ts-node src/ai/evals/classification.ts",
     "replay": "ts-node src/ai/evals/replay.ts",
     "reclassify": "ts-node src/scripts/reclassify.ts",
-    "eval:locomo": "ts-node src/scripts/locomoEval.ts"
+    "eval:locomo": "ts-node src/scripts/locomoEval.ts",
+    "eval:injection": "ts-node src/ai/evals/injection.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
